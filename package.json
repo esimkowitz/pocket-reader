@@ -1,0 +1,37 @@
+{
+  "name": "pocket-reader",
+  "version": "0.1.0",
+  "description": "Read Pocket articles with Alexa",
+  "main": "index.js",
+  "contributors": [
+    {
+      "name": "Evan Simkowitz",
+      "email": "esimkowitz@wustl.edu"
+    }
+  ],
+  "dependencies": {
+    "aws-sdk": "^2.4.7",
+    "i18next": "^3.4.1",
+    "i18next-sprintf-postprocessor": "^0.2.2",
+    "client-oauth2": "^4.1.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexa/alexa-skill-sdk-for-nodejs.git"
+  },
+  "keywords": [
+    "Alexa",
+    "skill",
+    "sdk"
+  ],
+  "author": "Amazon.com",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/alexa/alexa-skill-sdk-for-nodejs/issues"
+  },
+  "homepage": "https://github.com/alexa/alexa-skill-sdk-for-nodejs#readme"
+}
