@@ -13,7 +13,7 @@
     "aws-sdk": "^2.4.7",
     "i18next": "^3.4.1",
     "i18next-sprintf-postprocessor": "^0.2.2",
-    "client-oauth2": "^4.1.0"
+    "xmlhttprequest": "^1.8.0"
   },
   "devDependencies": {},
   "scripts": {
@@ -21,17 +21,22 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alexa/alexa-skill-sdk-for-nodejs.git"
+    "url": "https://github.com/esimkowitz/pocket-reader.git"
   },
   "keywords": [
     "Alexa",
     "skill",
-    "sdk"
+    "sdk",
+    "Pocket",
+    "articles"
   ],
-  "author": "Amazon.com",
+  "author": {
+    "name": "Evan Simkowitz",
+    "email": "esimkowitz@wustl.edu"
+  },
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/alexa/alexa-skill-sdk-for-nodejs/issues"
+    "url": "https://github.com/esimkowitz/pocket-reader/issues"
   },
-  "homepage": "https://github.com/alexa/alexa-skill-sdk-for-nodejs#readme"
+  "homepage": "https://github.com/esimkowitz/pocket-reader#readme"
 }

@@ -22,6 +22,8 @@ Currently supports English and German. (en-US, de-DE).
 // Use the new Alexa SDK
 const Alexa = require('alexa-sdk');
 
+let XMLHttpRequest1 = require("xmlhttprequest");
+
 // UPDATEME: Does your skill use Dialog Directives?  If so, update this to true.
 const DIALOG_DIRECTIVE_SUPPORT = true;
 
@@ -31,6 +33,7 @@ const LANGUAGE_STRINGS = {
         'launchRequestResponse': 'Welcome to Pocket Reader! If this is your first time, ask for help.',
         'exit': 'Goodbye.',
         'okay': 'Okay.',
+        'link_account': 'To start using this skill, please use the Alexa app to link your Pocket account.',
         'received_with': ' received with ',
         'fetching': 'Fetching',
         'reading': 'Reading',
@@ -64,6 +67,13 @@ const handlers = {
     // Launch request - "open skillName" - keep the session open until the user requests to exit
     'LaunchRequest': function () {
         this.attributes['dialogSession'] = true;
+        if (this.event.session.user.accessToken === undefined) {
+
+            this.emit(':tellWithLinkAccountCard',
+                LANGUAGE.link_account);
+            return;
+
+        }
         this.emit(':ask', LANGUAGE.launchRequestResponse, LANGUAGE.launchRequestResponse);
     },
     // End the Session
@@ -92,10 +102,10 @@ const handlers = {
     },
     'FetchArticle': function () {
 
-        if (alexa.event.session.user.accessToken == undefined) {
+        if (this.event.session.user.accessToken === undefined) {
 
-            alexa.emit(':tellWithLinkAccountCard',
-                'to start using this skill, please use the companion app to authenticate on Amazon');
+            this.emit(':tellWithLinkAccountCard',
+                LANGUAGE.link_account);
             return;
 
         }
@@ -246,3 +256,50 @@ exports.handler = (event, context) => {
     alexa.registerHandlers(handlers);
     alexa.execute();
 };
+
+function makeRequest(url, data, callback) {
+    let XHR = new XMLHttpRequest1();
+
+    // Format our data into our form data string
+    let dataJSON = {};
+    for (let name in data["queryString"]) {
+        dataJSON[name] = data["queryString"][name];
+    }
+    const bodyArr = (data["body"].search("&") !== -1) ? data["body"].split("&") : Array(data["body"]);
+    bodyArr.forEach(function (element) {
+        const key = element.substr(0, element.indexOf("="));
+        const value = element.substr(element.indexOf("=") + 1, element.length);
+        dataJSON[key] = value;
+    }, this);
+    const dataStr = JSON.stringify(dataJSON);
+    console.log("request body: " + dataStr);
+
+    // Define what happens on successful data submission
+    XHR.addEventListener('load', function (e) {
+        console.log('response: ' + XHR.responseText);
+        const regex = /[1-5][0-9][0-9]\ /g;
+        try {
+            const statusCode = regex.exec(XHR.responseText);
+            console.log("statusCode: " + statusCode);
+            if (statusCode !== null) {
+                callback(new Error(statusCode), XHR.responseText);
+            } else {
+                callback(e, JSON.stringify(JSON.parse(XHR.responseText)));
+            }
+        } catch (Error) {
+            callback(new Error("500"), "Internal server error");
+        }
+    });
+
+    // Define what happens in case of error
+    XHR.addEventListener('error', function (e) {
+        callback(e, XHR.response);
+    });
+
+    // Set up our request
+    XHR.open('POST', url);
+    XHR.setRequestHeader('Content-Type', 'application/json; charset=UTF8');
+    XHR.setRequestHeader('X-Accept', 'application/json');
+
+    XHR.send(dataStr);
+}
