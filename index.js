@@ -1,20 +1,18 @@
 /* -*- coding: utf-8 -*- */
 
 /*
-Copyright 2016-2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-Licensed under the Amazon Software License (the "License"). You may not use this file except in 
+Copyright 2017 Evan Simkowitz. All Rights Reserved.
+Licensed under the Apache License 2.0 (the "License"). You may not use this file except in 
 compliance with the License. A copy of the License is located at
-    http://aws.amazon.com/asl/
+    http://www.apache.org/licenses/
 or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, 
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific 
 language governing permissions and limitations under the License.
 */
 
 /*
-The Alexa ASK Intent Validator is designed for medium-complex Intent Schema validation. Need to quickly 
-try many different combinations of your utterances ON your devices, this is the tool for you.  
 
-Currently supports English and German. (en-US, de-DE).
+Currently supports English. (en-US).
  **/
 
 'use strict';
@@ -22,9 +20,8 @@ Currently supports English and German. (en-US, de-DE).
 // Use the new Alexa SDK
 const Alexa = require('alexa-sdk');
 
-let XMLHttpRequest1 = require("xmlhttprequest");
+let XMLHttpRequest1 = require("xmlhttprequest").XMLHttpRequest;
 
-// UPDATEME: Does your skill use Dialog Directives?  If so, update this to true.
 const DIALOG_DIRECTIVE_SUPPORT = true;
 
 // Series of strings for language tokenization
@@ -37,6 +34,7 @@ const LANGUAGE_STRINGS = {
         'received_with': ' received with ',
         'fetching': 'Fetching',
         'reading': 'Reading',
+        'reading_following': 'Reading the following articles from Pocket',
         'articles_from_pocket': 'articles from Pocket',
         'slot': ' slot. ',
         'additionalRequests': 'Is there anything else I can help you with?',
@@ -45,16 +43,6 @@ const LANGUAGE_STRINGS = {
         'received_slots_are': 'Received slots are ',
         'card_title': 'Pocket Reader',
         'error': "I'm sorry, I'm not myself today. Let's start over."
-    },
-    'de': {
-        'launchRequestResponse': 'Launch Request. Gib den nächsten Befehl oder sage Abbruch',
-        'exit': 'Auf Wiedersehen.',
-        'received_with': ' empfangen mit ',
-        'slot': ' Slot. ',
-        'slots': ' Slots. ',
-        'still_listening': "Ich lausche noch immer. Bitte gebe einen neuen Befehl oder sage Stop.",
-        'received_slots_are': 'Empfangene Slots sind ',
-        'card_title': 'Pocket Reader'
     }
 }
 
@@ -67,6 +55,8 @@ const handlers = {
     // Launch request - "open skillName" - keep the session open until the user requests to exit
     'LaunchRequest': function () {
         this.attributes['dialogSession'] = true;
+
+        // If the access_token isn't set, the user must link their Pocket account to Alexa's services.
         if (this.event.session.user.accessToken === undefined) {
 
             this.emit(':tellWithLinkAccountCard',
@@ -101,8 +91,10 @@ const handlers = {
         }
     },
     'FetchArticle': function () {
+        let access_token = this.event.session.user.accessToken;
 
-        if (this.event.session.user.accessToken === undefined) {
+        // If the access_token isn't set, the user must link their Pocket account to Alexa's services.
+        if (access_token === undefined) {
 
             this.emit(':tellWithLinkAccountCard',
                 LANGUAGE.link_account);
@@ -120,19 +112,19 @@ const handlers = {
             for (let i in slots) {
                 //Check if there is a value in a given slot
                 switch (slots[i].name) {
-                    case 'Qualifier':
+                    case 'Qualifier': // Obtain the resolved qualifier (either 'oldest' or 'newest')
                         {
                             if (slots[i].resolutions) {
                                 let resolutions = slots[i].resolutions.resolutionsPerAuthority;
                                 if (resolutions.length > 0) {
                                     if (resolutions[0].values.length > 0) {
-                                        fetch_data['qualifier'] = resolutions[0].values[0].value.id;
+                                        fetch_data['qualifier'] = resolutions[0].values[0].value.name;
                                     }
                                 }
                             }
                             break;
                         }
-                    case 'Number':
+                    case 'Number': // Obtain the number of articles desired
                         {
                             {
                                 fetch_data['number'] = Number(slots[i].value ? slots[i].value : 1);
@@ -146,108 +138,84 @@ const handlers = {
                 }
 
             }
-            let responseText = `${LANGUAGE.reading} ${fetch_data['number']} ${fetch_data['qualifier']} ${LANGUAGE.articles_from_pocket}. `;
-            let cardInfo = `${LANGUAGE.reading} ${fetch_data['number']} ${fetch_data['qualifier']} ${LANGUAGE.articles_from_pocket}. `;
 
-            this.attributes['intentOutput'] = cardInfo;
+            // Retrieve the n newest|oldest articles using Pocket's Retrieve API
+            let request_data = {
+                "consumer_key": process.env.POCKET_CONSUMER_KEY,
+                "access_token": access_token,
+                "count": fetch_data['number'],
+                "detailType": "simple",
+                "sort": fetch_data['qualifier'],
+                "contentType": "article"
+            };
+            let url = 'https://getpocket.com/v3/get';
+            let self = this;
+            makeRequest(url, request_data, function (err, res) {
+                let response_text = "Failure",
+                    card_info = "Failure";
+                let article_list = {},
+                    sort_id_list = {};
+                let count = 0;
+                if (!err) {
+                    // Gather the titles of the retrieved articles and formulate the announcement
+                    if (res.status && res.complete) {
+                        article_list = res.list;
+                        let article_title_str_spoken = "",
+                            article_title_str_written = "";
+                        for (let key in article_list) {
+                            sort_id_list[article_list[key].sort_id] = key;
+                            count++;
+                        }
+                        for (let i = 0; i < count; ++i) {
+                            let article = article_list[sort_id_list[String(i)]];
+                            article_title_str_spoken += `${article.resolved_title}, `;
+                            article_title_str_written += `* ${article.resolved_title}\n`;
+                        }
+                        article_title_str_spoken = article_title_str_spoken.substr(0, article_title_str_spoken.length - 2);
+                        article_title_str_written = article_title_str_written.substr(0, article_title_str_written.length - 1);
+                        response_text = `${LANGUAGE.reading_following}. ${article_title_str_spoken}`;
+                        response_text = response_text.replace(/&/g, "and");
+                        card_info = `${LANGUAGE.reading_following}:\n\n${article_title_str_written}`;
+                    }
+                }
+                self.attributes['intentOutput'] = response_text;
 
-            // Determine if we are going to end the session or keep it in dialog mode.  When used in dialog mode we "ask" 
-            // as we are expecting another question to come through.  When used in OneShot mode we "tell" and end the session.
-            if (this.attributes['dialogSession']) {
-                this.emit(':askWithCard', responseText, LANGUAGE.still_listening, LANGUAGE.card_title, cardInfo);
-            } else {
-                this.emit(':tellWithCard', responseText, LANGUAGE.card_title, cardInfo);
-            }
+                // Announce the articles that will be read by Pocket Reader
+                // if (self.attributes['dialogSession']) {
+                //     self.emit(':askWithCard', response_text, LANGUAGE.still_listening, LANGUAGE.card_title, card_info);
+                // } else {
+                //     self.emit(':tellWithCard', response_text, LANGUAGE.card_title, card_info);
+                // }
+
+                // Use Pocket's Article View API to obtain the parsed text of the articles.
+                if (!err && res.status && res.complete) {
+                    // For debugging purposes, set count to 1.
+                    count = 1;
+                    for (let i = 0; i < count; ++i) {
+                        let article = article_list[sort_id_list[String(i)]];
+                        let request_data = {
+                            'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
+                            'url': encodeURIComponent(article.given_url),
+                            'images': '0',
+                            'videos': '0',
+                            'refresh': '0',
+                            'output': 'json'
+                        };
+                        let url = 'https://text.getpocket.com/v3/text';
+                        makeRequest(url, request_data, function (err, res) {
+                            if (!err) {
+                                response_text = `${LANGUAGE.reading} ${res.title}.`
+                                self.emit(':tell', response_text);
+                            }
+                        }, "FORM");
+                    }
+                }
+            });
         } else {
             this.emit(':ask', `${LANGUAGE.error} ${LANGUAGE.additionalRequests}`);
         }
-
-    },
-
-    // The main handler - here we simply take the inbound Alexa request, parse out the intent and slots, then return back 
-    // to the user, either as a dialog
-    'Unhandled': function () {
-        // this.emit('Reflect', this.event.request);
-        let request = this.event.request;
-
-        // If dialog directive support is enabled AND it exists and it is not in "completed" status, delegate back to the interaction model
-        if (DIALOG_DIRECTIVE_SUPPORT && request.dialogState && request.dialogState !== 'COMPLETED') {
-            this.emit(':delegate');
-        } else {
-            let intentInfo = parseIntentsAndSlotsFromEvent(request);
-            this.attributes['intentOutput'] = intentInfo.cardInfo;
-
-            // Determine if we are going to end the session or keep it in dialog mode.  When used in dialog mode we "ask" 
-            // as we are expecting another question to come through.  When used in OneShot mode we "tell" and end the session.
-            if (this.attributes['dialogSession']) {
-                this.emit(':askWithCard', intentInfo.response, LANGUAGE.still_listening, LANGUAGE.card_title, intentInfo.cardInfo);
-            } else {
-                this.emit(':tellWithCard', intentInfo.response, LANGUAGE.card_title, intentInfo.cardInfo);
-            }
-        }
     }
-
 };
-
-/**
- * Parses the collected event info from Alexa into a friendlier TTS response and 
- * creates a card response with Intent/Slot info
- */
-function parseIntentsAndSlotsFromEvent(request) {
-    //Cleanse the request intent name
-    let intentName = request.intent.name.replace(/[^a-zA-Z0-9]/g, " ");
-
-    let LANGUAGE = {};
-    //use German language if the locale is Germany
-    switch (request.locale) {
-        case 'de-DE':
-            LANGUAGE = LANGUAGE_STRINGS.de;
-            break;
-        default:
-            LANGUAGE = LANGUAGE_STRINGS.en;
-    }
-
-    let numSlots = 0;
-    let slots = request.intent.slots;
-
-    let filledInSlots = {};
-
-    if (slots) {
-        for (let i in slots) {
-            //Check if there is a value in a given slot
-            if (slots[i].value) {
-                var id = "no id";
-                if (slots[i].resolutions) {
-                    var resolutions = slots[i].resolutions.resolutionsPerAuthority;
-                    if (resolutions.length > 0) {
-                        if (resolutions[0].values.length > 0) {
-                            id = resolutions[0].values[0].value.id;
-                        }
-                    }
-                }
-                filledInSlots[slots[i].name] = [slots[i].value, id];
-                numSlots++;
-            }
-        }
-    }
-
-    let responseText = `${intentName} ${LANGUAGE.received_with} ${numSlots} ${LANGUAGE.slots}`;
-    let cardInfo = `${intentName} ${LANGUAGE.received_with} ${numSlots} ${LANGUAGE.slots}`;
-
-    if (filledInSlots > 0) {
-        responseText += LANGUAGE.received_slots_are;
-    }
-
-    for (let slotName in filledInSlots) {
-        responseText += ` ${slotName}, ${filledInSlots[slotName][0]}, ${filledInSlots[slotName][1]}. `;
-        cardInfo += `\n${slotName}: ${filledInSlots[slotName][0]}, ${filledInSlots[slotName][1]} `;
-    }
-
-    return {
-        response: responseText,
-        cardInfo: cardInfo
-    };
-}
 
 exports.handler = (event, context) => {
     console.log(JSON.stringify(event));
@@ -257,37 +225,36 @@ exports.handler = (event, context) => {
     alexa.execute();
 };
 
-function makeRequest(url, data, callback) {
-    let XHR = new XMLHttpRequest1();
-
-    // Format our data into our form data string
-    let dataJSON = {};
-    for (let name in data["queryString"]) {
-        dataJSON[name] = data["queryString"][name];
+// This function makes XML HTTP requests to the specified URL containing the specified data in the
+// specified format. The response is handled by the specified callback function.
+function makeRequest(url, data, callback, method = "JSON") {
+    let dataStr = "";
+    switch (method) {
+        case "FORM":
+            {
+                for (let name in data) {
+                    dataStr += name + '=' + data[name] + '&';
+                }
+                dataStr = dataStr.substr(0, dataStr.length - 1);
+                break;
+            }
+        default: // case "JSON":
+            {
+                dataStr = JSON.stringify(data);
+                console.log("request body: " + dataStr);
+                break;
+            }
     }
-    const bodyArr = (data["body"].search("&") !== -1) ? data["body"].split("&") : Array(data["body"]);
-    bodyArr.forEach(function (element) {
-        const key = element.substr(0, element.indexOf("="));
-        const value = element.substr(element.indexOf("=") + 1, element.length);
-        dataJSON[key] = value;
-    }, this);
-    const dataStr = JSON.stringify(dataJSON);
-    console.log("request body: " + dataStr);
+
+    let XHR = new XMLHttpRequest1();
 
     // Define what happens on successful data submission
     XHR.addEventListener('load', function (e) {
         console.log('response: ' + XHR.responseText);
-        const regex = /[1-5][0-9][0-9]\ /g;
-        try {
-            const statusCode = regex.exec(XHR.responseText);
-            console.log("statusCode: " + statusCode);
-            if (statusCode !== null) {
-                callback(new Error(statusCode), XHR.responseText);
-            } else {
-                callback(e, JSON.stringify(JSON.parse(XHR.responseText)));
-            }
-        } catch (Error) {
-            callback(new Error("500"), "Internal server error");
+        if (XHR.status !== 200) {
+            callback(true, XHR.responseText);
+        } else {
+            callback(false, JSON.parse(XHR.responseText));
         }
     });
 
@@ -296,10 +263,10 @@ function makeRequest(url, data, callback) {
         callback(e, XHR.response);
     });
 
-    // Set up our request
+    // Set up our request    
     XHR.open('POST', url);
-    XHR.setRequestHeader('Content-Type', 'application/json; charset=UTF8');
-    XHR.setRequestHeader('X-Accept', 'application/json');
-
+    let content_type = (method === "FORM") ? "application/x-www-form-urlencoded" : "application/json";
+    XHR.setRequestHeader('Content-Type', `${content_type}; charset=UTF8`);
+    XHR.setRequestHeader('X-Accept', `${content_type}; charset=UTF8`);
     XHR.send(dataStr);
 }
