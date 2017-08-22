@@ -1,11 +1,18 @@
 'use strict';
 
-var Alexa = require('alexa-sdk');
-var audioData = require('./audioAssets');
-var constants = require('./constants');
+const Alexa = require('alexa-sdk');
+// var audioData = {};
+const constants = require('./constants');
+let AWS = require('aws-sdk');
+AWS.config.update({
+    region: 'us-east-1'
+});
+let dynamodb = new AWS.DynamoDB.DocumentClient({
+    region: 'us-east-1'
+});
 
 // Binding audio handlers to PLAY_MODE State since they are expected only in this mode.
-var audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
+let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
     'PlaybackStarted': function () {
         /*
          * AudioPlayer.PlaybackStarted Directive received.
@@ -45,6 +52,8 @@ var audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          * Storing details in dynamoDB using attributes.
          * Enqueuing the next audio file.
          */
+        // console.log(JSON.stringify(this.event));
+        console.log("PlaybackNearlyFinished");
         if (this.attributes['enqueuedToken']) {
             /*
              * Since AudioPlayer.PlaybackNearlyFinished Directive are prone to be delivered multiple times during the
@@ -57,26 +66,80 @@ var audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         var enqueueIndex = this.attributes['index'];
         enqueueIndex += 1;
         // Checking if  there are any items to be enqueued.
-        if (enqueueIndex === audioData.length) {
-            if (this.attributes['loop']) {
-                // Enqueueing the first item since looping is enabled.
-                enqueueIndex = 0;
+        let access_token = this.event.context.System.user.accessToken;
+        let params = {
+            TableName: constants.playlistTableName,
+            KeyConditionExpression: "#token = :access_token",
+            ExpressionAttributeNames: {
+                "#token": "access_token"
+            },
+            ExpressionAttributeValues: {
+                ":access_token": access_token
+            },
+            Select: "COUNT"
+        };
+        console.log("playlist numItems query:", JSON.stringify(params));
+        let self = this;
+        dynamodb.query(params, function (err, data) {
+            if (err) {
+                console.log(err, err.stack);
             } else {
-                // Nothing to enqueue since reached end of the list and looping is disabled.
-                return this.context.succeed(true);
+                if (enqueueIndex >= data.Count) {
+                    if (self.attributes['loop']) {
+                        // Enqueueing the first item since looping is enabled.
+                        enqueueIndex = 0;
+                    } else {
+                        // Nothing to enqueue since reached end of the list and looping is disabled.
+                        return self.context.succeed(true);
+                    }
+                }
+                // Setting attributes to indicate item is enqueued.
+                self.attributes['enqueuedToken'] = String(self.attributes['playOrder'][enqueueIndex]);
+
+                var enqueueToken = self.attributes['enqueuedToken'];
+                var playBehavior = 'ENQUEUE';
+                let params = {
+                    TableName: constants.playlistTableName,
+                    KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
+                    ExpressionAttributeNames: {
+                        "#token": "access_token",
+                        "#order": "order"
+                    },
+                    ExpressionAttributeValues: {
+                        ":access_token": access_token,
+                        ":curr_index": self.attributes['playOrder'][enqueueIndex]
+                    }
+                };
+                console.log("playlist items query:", JSON.stringify(params));
+                dynamodb.query(params, function (err, data) {
+                    if (err) {
+                        console.log(err, err.stack);
+                    } else {
+                        console.log("playlist items result:", JSON.stringify(data));
+                        let params = {
+                            Key: {
+                                "key": data.Items[0].article_key
+                            },
+                            TableName: constants.audioAssetTableName
+                        };
+                        console.log("get audio asset query:", JSON.stringify(params));
+                        dynamodb.get(params, function (err, data) {
+                            if (err) {
+                                console.log(err, err.stack);
+                            } else {
+                                console.log("get audio asset result:", JSON.stringify(data));
+                                let podcast = data.Item;
+                                var expectedPreviousToken = self.attributes['token'];
+                                var offsetInMilliseconds = 0;
+
+                                self.response.audioPlayerPlay(playBehavior, podcast.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
+                                self.emit(':responseReady');
+                            }
+                        });
+                    }
+                });
             }
-        }
-        // Setting attributes to indicate item is enqueued.
-        this.attributes['enqueuedToken'] = String(this.attributes['playOrder'][enqueueIndex]);
-
-        var enqueueToken = this.attributes['enqueuedToken'];
-        var playBehavior = 'ENQUEUE';
-        var podcast = audioData[this.attributes['playOrder'][enqueueIndex]];
-        var expectedPreviousToken = this.attributes['token'];
-        var offsetInMilliseconds = 0;
-
-        this.response.audioPlayerPlay(playBehavior, podcast.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
-        this.emit(':responseReady');
+        });
     },
     'PlaybackFailed': function () {
         //  AudioPlayer.PlaybackNearlyFinished Directive received. Logging the error.
