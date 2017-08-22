@@ -17,10 +17,26 @@ Currently supports English. (en-US).
 
 'use strict';
 
+String.prototype.hashCode = function(){
+	var hash = 0;
+	if (this.length == 0) return hash;
+	for (let i = 0; i < this.length; i++) {
+		let char = this.charCodeAt(i);
+		hash = ((hash<<5)-hash)+char;
+		hash = hash & hash; // Convert to 32bit integer
+	}
+	return hash;
+}
+
 // Use the new Alexa SDK
 const Alexa = require('alexa-sdk');
 
-let XMLHttpRequest1 = require("xmlhttprequest").XMLHttpRequest;
+var XMLHttpRequest1 = require("xmlhttprequest").XMLHttpRequest;
+var AWS = require('aws-sdk');
+AWS.config.update({
+    region: 'us-east-1'
+});
+var requests = require("./requests");
 
 const DIALOG_DIRECTIVE_SUPPORT = true;
 
@@ -150,7 +166,7 @@ const handlers = {
             };
             let url = 'https://getpocket.com/v3/get';
             let self = this;
-            makeRequest(url, request_data, function (err, res) {
+            requests.makeRequest(url, request_data, function (err, res) {
                 let response_text = "Failure",
                     card_info = "Failure";
                 let article_list = {},
@@ -190,83 +206,119 @@ const handlers = {
                 // Use Pocket's Article View API to obtain the parsed text of the articles.
                 if (!err && res.status && res.complete) {
                     // For debugging purposes, set count to 1.
-                    count = 1;
+                    // count = 1;
+                    var s3 = new AWS.S3();
                     for (let i = 0; i < count; ++i) {
+                        const bucket = "pocket-reader-audio-files";
+                        const output_format = "mp3";
                         let article = article_list[sort_id_list[String(i)]];
-                        let request_data = {
-                            'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
-                            'url': encodeURIComponent(article.given_url),
-                            'images': '0',
-                            'videos': '0',
-                            'refresh': '0',
-                            'output': 'json'
+                        const key = String(`${article.resolved_url.hashCode()}.${output_format}`);
+                        let params = {
+                            Bucket: bucket,
+                            Key: key
                         };
-                        let url = 'https://text.getpocket.com/v3/text';
-                        makeRequest(url, request_data, function (err, res) {
+                        s3.headObject(params, function (err, data) {
                             if (!err) {
-                                response_text = `${LANGUAGE.reading} ${res.title}.`
-                                self.emit(':tell', response_text);
+                                console.log("The Object exists");
+                                const url = `https://s3.amazonaws.com/${bucket}/${key}`;
+                                console.log(`URL is ${url}`);
+                                dynamodb.putItem({
+                                    TableName: constants.audioAssetTableName,
+                                    Item: {
+                                        title: article.resolved_title,
+                                        url: url,
+                                        key: key
+                                    }
+                                }, function (err, data) {
+                                    if (err) {
+                                        console.log('ERROR: Dynamo failed: ' + err);
+                                    } else {
+                                        console.log('Dynamo Success: ' + JSON.stringify(data, null, '  '));
+                                    }
+                                });
+                                // self.emit(':tell', response_text);
+                            } else if (err.code === 'NotFound') {
+                                console.log("The Object doesn't exist");
+                                let request_data = {
+                                    'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
+                                    'url': encodeURIComponent(article.resolved_url),
+                                    'images': '0',
+                                    'videos': '0',
+                                    'refresh': '0',
+                                    'output': 'json'
+                                };
+                                let url = 'https://text.getpocket.com/v3/text';
+                                requests.makeRequest(url, request_data, function (err, res) {
+                                    if (!err) {
+                                        let response_text = `${LANGUAGE.reading} ${res.title}.`;
+
+                                        let params = {
+                                            OutputFormat: output_format,
+                                            Text: response_text,
+                                            TextType: "text",
+                                            VoiceId: "Joanna"
+                                        };
+                                        console.log("polly request: " + JSON.stringify(params));
+
+                                        var polly = new AWS.Polly();
+                                        polly.synthesizeSpeech(params, function (err, data) {
+                                            if (err) console.log(err, err.stack); // an error occurred
+                                            else {
+                                                console.log(data); // successful response
+                                                let param = {
+                                                    Bucket: bucket,
+                                                    Key: key,
+                                                    Body: data.AudioStream,
+                                                    ACL: 'public-read'
+                                                };
+
+                                                s3.putObject(param, function (resp) {
+                                                    console.log('Successfully uploaded package.');
+                                                    const url = `https://s3.amazonaws.com/${bucket}/${key}`;
+                                                    console.log(`URL is ${url}`);
+                                                    dynamodb.putItem({
+                                                        TableName: constants.audioAssetTableName,
+                                                        Item: {
+                                                            title: article.resolved_title,
+                                                            url: url,
+                                                            key: key
+                                                        }
+                                                    }, function (err, data) {
+                                                        if (err) {
+                                                            console.log('ERROR: Dynamo failed: ' + err);
+                                                        } else {
+                                                            console.log('Dynamo Success: ' + JSON.stringify(data, null, '  '));
+                                                        }
+                                                    });
+                                                    // self.emit(':tell', response_text);
+
+                                                });
+                                            }
+                                        });
+
+                                    }
+                                }, "FORM");
+                            } else {
+                                console.log(err, err.stack);
                             }
-                        }, "FORM");
+
+                        });
                     }
+                    self.handler.state = constants.states.START_MODE;
+                    self.emit('PlayAudio');
                 }
             });
         } else {
             this.emit(':ask', `${LANGUAGE.error} ${LANGUAGE.additionalRequests}`);
         }
-    }
+    },
 };
 
 exports.handler = (event, context) => {
     console.log(JSON.stringify(event));
-    console.log(JSON.stringify(context));
+    console.log(JSON.stringify(context)); 
+    alexa.dynamoDBTableName = constants.dynamoDBTableName;
     const alexa = Alexa.handler(event, context);
     alexa.registerHandlers(handlers);
     alexa.execute();
 };
-
-// This function makes XML HTTP requests to the specified URL containing the specified data in the
-// specified format. The response is handled by the specified callback function.
-function makeRequest(url, data, callback, method = "JSON") {
-    let dataStr = "";
-    switch (method) {
-        case "FORM":
-            {
-                for (let name in data) {
-                    dataStr += name + '=' + data[name] + '&';
-                }
-                dataStr = dataStr.substr(0, dataStr.length - 1);
-                break;
-            }
-        default: // case "JSON":
-            {
-                dataStr = JSON.stringify(data);
-                console.log("request body: " + dataStr);
-                break;
-            }
-    }
-
-    let XHR = new XMLHttpRequest1();
-
-    // Define what happens on successful data submission
-    XHR.addEventListener('load', function (e) {
-        console.log('response: ' + XHR.responseText);
-        if (XHR.status !== 200) {
-            callback(true, XHR.responseText);
-        } else {
-            callback(false, JSON.parse(XHR.responseText));
-        }
-    });
-
-    // Define what happens in case of error
-    XHR.addEventListener('error', function (e) {
-        callback(e, XHR.response);
-    });
-
-    // Set up our request    
-    XHR.open('POST', url);
-    let content_type = (method === "FORM") ? "application/x-www-form-urlencoded" : "application/json";
-    XHR.setRequestHeader('Content-Type', `${content_type}; charset=UTF8`);
-    XHR.setRequestHeader('X-Accept', `${content_type}; charset=UTF8`);
-    XHR.send(dataStr);
-}
