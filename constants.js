@@ -8,6 +8,7 @@ module.exports = Object.freeze({
     //  DynamoDB Table name
     dynamoDBTableName: 'PocketReader',
     audioAssetTableName: 'pocket-reader-audio-assets',
+    playlistTableName: 'pocket-reader-playlist',
 
     /*
      *  States:
