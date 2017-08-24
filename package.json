@@ -15,7 +15,8 @@
     "i18next": "^3.4.1",
     "i18next-sprintf-postprocessor": "^0.2.2",
     "xmlhttprequest": "^1.8.0",
-    "dynamodb-doc": "^1.0.0"
+    "dynamodb-doc": "^1.0.0",
+    "cheerio": "^1.0.0-rc.2"
   },
   "devDependencies": {},
   "scripts": {

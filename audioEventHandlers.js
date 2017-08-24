@@ -19,9 +19,11 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          * Confirming that requested audio file began playing.
          * Storing details in dynamoDB using attributes.
          */
+        console.log("PlaybackStarted Request");
         this.attributes['token'] = getToken.call(this);
         this.attributes['index'] = getIndex.call(this);
         this.attributes['playbackFinished'] = false;
+        console.log("this.attributes:", JSON.stringify(this.attributes));
         this.emit(':saveState', true);
     },
     'PlaybackFinished': function () {
@@ -30,6 +32,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          * Confirming that audio file completed playing.
          * Storing details in dynamoDB using attributes.
          */
+        console.log("PlaybackFinished Request");
         this.attributes['playbackFinished'] = true;
         this.attributes['enqueuedToken'] = false;
         this.emit(':saveState', true);
@@ -40,6 +43,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          * Confirming that audio file stopped playing.
          * Storing details in dynamoDB using attributes.
          */
+        console.log("PlaybackStopped Request");
         this.attributes['token'] = getToken.call(this);
         this.attributes['index'] = getIndex.call(this);
         this.attributes['offsetInMilliseconds'] = getOffsetInMilliseconds.call(this);
@@ -53,8 +57,11 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          * Enqueuing the next audio file.
          */
         // console.log(JSON.stringify(this.event));
-        console.log("PlaybackNearlyFinished");
-        if (this.attributes['enqueuedToken']) {
+        console.log("PlaybackNearlyFinished Request");
+        this.attributes['token'] = getToken.call(this);
+        this.attributes['index'] = getIndex.call(this);
+        console.log("this.attributes", JSON.stringify(this.attributes));
+        if ((this.attributes['enqueuedToken'] !== null) && (this.attributes['enqueuedToken'] !== false) && (this.attributes['enqueuedToken'] !== this.attributes['token'])) {
             /*
              * Since AudioPlayer.PlaybackNearlyFinished Directive are prone to be delivered multiple times during the
              * same audio being played.
@@ -62,8 +69,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
              */
             return this.context.succeed(true);
         }
-
-        var enqueueIndex = this.attributes['index'];
+        let enqueueIndex = this.attributes['index'];
         enqueueIndex += 1;
         // Checking if  there are any items to be enqueued.
         let access_token = this.event.context.System.user.accessToken;
@@ -84,6 +90,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
             if (err) {
                 console.log(err, err.stack);
             } else {
+                console.log("enqueueIndex", enqueueIndex, "data.Count", data.Count);
                 if (enqueueIndex >= data.Count) {
                     if (self.attributes['loop']) {
                         // Enqueueing the first item since looping is enabled.
@@ -96,8 +103,8 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                 // Setting attributes to indicate item is enqueued.
                 self.attributes['enqueuedToken'] = String(self.attributes['playOrder'][enqueueIndex]);
 
-                var enqueueToken = self.attributes['enqueuedToken'];
-                var playBehavior = 'ENQUEUE';
+                let enqueueToken = self.attributes['enqueuedToken'];
+                const playBehavior = 'ENQUEUE';
                 let params = {
                     TableName: constants.playlistTableName,
                     KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
@@ -117,10 +124,16 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                     } else {
                         console.log("playlist items result:", JSON.stringify(data));
                         let params = {
-                            Key: {
-                                "key": data.Items[0].article_key
+                            TableName: constants.audioAssetTableName,
+                            KeyConditionExpression: "(#article_key = :key) AND (#article_index = :index)",
+                            ExpressionAttributeNames: {
+                                "#article_key": "key",
+                                "#article_index": "index"
                             },
-                            TableName: constants.audioAssetTableName
+                            ExpressionAttributeValues: {
+                                ":key": data.Items[0].article_key,
+                                ":index": data.Items[0].article_index
+                            }
                         };
                         console.log("get audio asset query:", JSON.stringify(params));
                         dynamodb.get(params, function (err, data) {
@@ -129,10 +142,11 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                             } else {
                                 console.log("get audio asset result:", JSON.stringify(data));
                                 let podcast = data.Item;
-                                var expectedPreviousToken = self.attributes['token'];
-                                var offsetInMilliseconds = 0;
+                                let expectedPreviousToken = self.attributes['token'];
+                                let offsetInMilliseconds = 0;
 
                                 self.response.audioPlayerPlay(playBehavior, podcast.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
+                                console.log("response:", JSON.stringify(self.response));
                                 self.emit(':responseReady');
                             }
                         });

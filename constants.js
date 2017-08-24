@@ -4,10 +4,12 @@ module.exports = Object.freeze({
 
     // App-ID. TODO: set to your own Skill App ID from the developer portal.
     appId: 'amzn1.ask.skill.31ac82a3-b8c0-4a68-87de-475fede46eb9',
+    appTitle: 'Pocket Reader for Alexa',
 
     //  DynamoDB Table name
     dynamoDBTableName: 'PocketReader',
-    audioAssetTableName: 'pocket-reader-audio-assets',
+    pollyQueueTableName: 'pocket-reader-polly-queue',
+    audioAssetTableName: 'pocket-reader-assets',
     playlistTableName: 'pocket-reader-playlist',
 
     /*
@@ -24,5 +26,7 @@ module.exports = Object.freeze({
         PLAY_MODE: '_PLAY_MODE',
         FETCH_MODE: '_FETCH_MODE',
         RESUME_DECISION_MODE: '_RESUME_DECISION_MODE'
-    }
+    },
+    audioAssetBucket: "pocket-reader-audio-files",
+    audioAssetFormat: 'mp3'
 });

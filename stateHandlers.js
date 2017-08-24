@@ -4,6 +4,7 @@ const Alexa = require('alexa-sdk');
 const EventEmitter = require('events');
 const constants = require('./constants');
 const requests = require('./requests');
+const htmlToText = require('./htmlToText');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -198,110 +199,94 @@ let stateHandlers = {
                                 let batchWriteParams = {
                                     RequestItems: {}
                                 };
-                                batchWriteParams.RequestItems[constants.audioAssetTableName] = [];
                                 batchWriteParams.RequestItems[constants.playlistTableName] = [];
+                                batchWriteParams.RequestItems[constants.pollyQueueTableName] = [];
                                 let emitter = new EventEmitter();
                                 if (!err && res.status && res.complete) {
                                     // For debugging purposes, set count to 1.
                                     // count = 1;
-                                    var s3 = new AWS.S3();
+                                    let orderCount = 0;
                                     for (let i = 0; i < count; ++i) {
-                                        const bucket = "pocket-reader-audio-files";
-                                        const output_format = "mp3";
                                         let article = article_list[sort_id_list[String(i)]];
-                                        const key = `${article.resolved_id}.${output_format}`;
+                                        const key = article.resolved_id;
                                         let params = {
-                                            Bucket: bucket,
-                                            Key: key
+                                            TableName: constants.audioAssetTableName,
+                                            KeyConditionExpression: "#article_key = :article",
+                                            ExpressionAttributeNames: {
+                                                "#article_key": "key"
+                                            },
+                                            ExpressionAttributeValues: {
+                                                ":article": key
+                                            },
                                         };
-                                        s3.headObject(params, function (err, data) {
+                                        console.log("audio asset query:", JSON.stringify(params));
+                                        dynamodb.query(params, function (err, data) {
+                                            console.log("audio asset query response:", JSON.stringify(data));
                                             if (!err) {
-                                                console.log("The Object exists");
-                                                const url = `https://s3.amazonaws.com/${bucket}/${key}`;
-                                                console.log(`URL is ${url}`);
-                                                batchWriteParams.RequestItems[constants.audioAssetTableName].push({
-                                                    PutRequest: {
-                                                        Item: {
-                                                            title: article.resolved_title,
-                                                            url: url,
-                                                            key: key
-                                                        }
-                                                    }
-                                                });
-                                                batchWriteParams.RequestItems[constants.playlistTableName].push({
-                                                    PutRequest: {
-                                                        Item: {
-                                                            access_token: access_token,
-                                                            order: i,
-                                                            article_key: key
-                                                        }
-                                                    }
-                                                });
-                                                emitter.emit("push");
-                                                // self.emit(':tell', response_text);
-                                            } else if (err.code === 'NotFound') {
-                                                console.log("The Object doesn't exist");
-                                                let request_data = {
-                                                    'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
-                                                    'url': encodeURIComponent(article.resolved_url),
-                                                    'images': '0',
-                                                    'videos': '0',
-                                                    'refresh': '0',
-                                                    'output': 'json'
-                                                };
-                                                let url = 'https://text.getpocket.com/v3/text';
-                                                requests.makeRequest(url, request_data, function (err, res) {
-                                                    if (!err) {
-                                                        let response_text = `${LANGUAGE.reading} ${res.title}.`;
-
-                                                        let params = {
-                                                            OutputFormat: output_format,
-                                                            Text: response_text,
-                                                            TextType: "text",
-                                                            VoiceId: "Joanna"
-                                                        };
-                                                        console.log("polly request: " + JSON.stringify(params));
-
-                                                        var polly = new AWS.Polly();
-                                                        polly.synthesizeSpeech(params, function (err, data) {
-                                                            if (err) console.log(err, err.stack); // an error occurred
-                                                            else {
-                                                                console.log(data); // successful response
-                                                                let param = {
-                                                                    Bucket: bucket,
-                                                                    Key: key,
-                                                                    Body: data.AudioStream,
-                                                                    ACL: 'public-read'
-                                                                };
-
-                                                                s3.putObject(param, function (resp) {
-                                                                    console.log('Successfully uploaded package.');
-                                                                    const url = `https://s3.amazonaws.com/${bucket}/${key}`;
-                                                                    console.log(`URL is ${url}`);
-                                                                    batchWriteParams.RequestItems[constants.audioAssetTableName].push({
-                                                                        PutRequest: {
-                                                                            Item: {
-                                                                                title: article.resolved_title,
-                                                                                url: url,
-                                                                                key: key
-                                                                            }
-                                                                        }
-                                                                    });
-                                                                    batchWriteParams.RequestItems[constants.playlistTableName].push({
-                                                                        PutRequest: {
-                                                                            Item: {
-                                                                                access_token: access_token,
-                                                                                order: i,
-                                                                                article_key: key
-                                                                            }
-                                                                        }
-                                                                    });
-                                                                    emitter.emit("push");
-                                                                });
+                                                if (data.Count > 0) {
+                                                    console.log("Asset exists");
+                                                    data.Items.forEach(function (asset, index, assets) {
+                                                        batchWriteParams.RequestItems[constants.playlistTableName].push({
+                                                            PutRequest: {
+                                                                Item: {
+                                                                    access_token: access_token,
+                                                                    order: orderCount++,
+                                                                    article_key: key,
+                                                                    article_index: index
+                                                                }
                                                             }
                                                         });
-                                                    }
-                                                }, "FORM");
+                                                        if (index + 1 >= assets.length)
+                                                            // FIXME: add section to look for missing audio assets in the polly queue and add them
+                                                            // to the playlist if present (use the new field numSlices for reference)    
+                                                            emitter.emit("push");
+                                                    });
+                                                } else {
+                                                    console.log("Asset doesn't exist");
+                                                    let request_data = {
+                                                        'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
+                                                        'url': encodeURIComponent(article.resolved_url),
+                                                        'images': '0',
+                                                        'videos': '0',
+                                                        'refresh': '0',
+                                                        'output': 'json'
+                                                    };
+                                                    let url = 'https://text.getpocket.com/v3/text';
+                                                    requests.makeRequest(url, request_data, function (err, res) {
+                                                        if (!err) {
+                                                            console.log("Article View response:", JSON.stringify(res));
+                                                            // let response_text = `${LANGUAGE.reading} ${res.title}.`;
+                                                            let response_texts = htmlToText.convert(res.article);
+                                                            response_texts.forEach(function (response_text, index, response_texts) {
+
+                                                                batchWriteParams.RequestItems[constants.playlistTableName].push({
+                                                                    PutRequest: {
+                                                                        Item: {
+                                                                            access_token: access_token,
+                                                                            order: orderCount++,
+                                                                            article_key: key,
+                                                                            article_index: index
+                                                                        }
+                                                                    }
+                                                                });
+                                                                batchWriteParams.RequestItems[constants.pollyQueueTableName].push({
+                                                                    PutRequest: {
+                                                                        Item: {
+                                                                            key: key,
+                                                                            index: index,
+                                                                            numSlices: response_texts.length,
+                                                                            title: res.title,
+                                                                            text: response_text
+                                                                        }
+                                                                    }
+                                                                });
+                                                                if (index + 1 >= response_texts.length)
+                                                                    emitter.emit("push");
+                                                            });
+
+                                                        }
+                                                    }, "FORM");
+                                                }
                                             } else {
                                                 console.log(err, err.stack);
                                             }
@@ -312,13 +297,33 @@ let stateHandlers = {
                                 emitter.on("push", function () {
                                     if (++pushCount >= fetch_data['number']) {
                                         console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
-                                        dynamodb.batchWrite(batchWriteParams, function (err, data) {
-                                            if (err) {
-                                                console.log('ERROR: Dynamo failed: ' + err);
-                                            } else {
-                                                console.log('put audio asset and playlist entry batchWrite success');
-                                                self.handler.state = constants.states.START_MODE;
-                                                self.emitWithState('PlayAudio');
+                                        let arrays = [];
+                                        const size = 25;
+                                        console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
+                                        Object.keys(batchWriteParams.RequestItems).forEach(function (key, index, keys) {
+                                            console.log(key, index, keys.length);
+                                            let a = batchWriteParams.RequestItems[key];
+                                            while (a.length > 0) {
+                                                let temp = {
+                                                    RequestItems: {}
+                                                };
+                                                temp.RequestItems[key] = a.splice(0, size);
+                                                arrays.push(temp);
+                                            }
+                                            if (index + 1 >= keys.length) {
+                                                // console.log("arrays:", JSON.stringify(arrays));
+                                                console.log("split batchWrite params:", JSON.stringify(arrays));
+                                                arrays.forEach(function (params, index, paramsArray) {
+                                                    dynamodb.batchWrite(params, function (err, data) {
+                                                        if (err) {
+                                                            console.log('ERROR: Dynamo failed: ' + err);
+                                                        } else {
+                                                            console.log('put audio asset and playlist entry batchWrite success');
+                                                            if (index + 1 >= paramsArray.length)
+                                                                self.emit('PlayAudio');
+                                                        }
+                                                    });
+                                                });
                                             }
                                         });
                                     }
@@ -525,7 +530,7 @@ let stateHandlers = {
         },
         'AMAZON.HelpIntent': function () {
             // This will called while audio is playing and a user says "ask <invocation_name> for help"
-            var message = 'You are listening to the AWS Podcast. You can say, Next or Previous to navigate through the playlist. ' +
+            var message = 'You are listening to Pocket Reader. ' +
                 'At any time, you can say Pause to pause the audio and Resume to resume.';
             this.response.speak(message).listen(message);
             this.emit(':responseReady');
@@ -534,7 +539,8 @@ let stateHandlers = {
             // No session ended logic
         },
         'Unhandled': function () {
-            var message = 'Sorry, I could not understand. You can say, Next or Previous to navigate through the playlist.';
+            var message = 'Sorry, I could not understand. ' +
+                'At any time, you can say Pause to pause the audio and Resume to resume.';
             this.response.speak(message).listen(message);
             this.emit(':responseReady');
         }
@@ -686,12 +692,14 @@ var controller = function () {
                 if (err) {
                     console.log(err, err.stack);
                 } else {
+                    let playlistData = data;
                     console.log("playlist items query result:", JSON.stringify(data));
                     let params = {
+                        TableName: constants.audioAssetTableName,
                         Key: {
-                            "key": data.Items[0].article_key
-                        },
-                        TableName: constants.audioAssetTableName
+                            key: playlistData.Items[0].article_key,
+                            index: playlistData.Items[0].article_index
+                        }
                     };
                     console.log("get audio asset query:", JSON.stringify(params));
                     dynamodb.get(params, function (err, data) {
@@ -699,19 +707,94 @@ var controller = function () {
                             console.log(err, err.stack);
                         } else {
                             console.log("get audio asset result:", JSON.stringify(data));
-                            let podcast = data.Item;
-                            const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
-                            // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
-                            self.attributes['enqueuedToken'] = null;
+                            let emitter = new EventEmitter();
+                            emitter.on("loaded", function (audioAsset) {
+                                console.log("audioAsset", JSON.stringify(audioAsset));
+                                const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
+                                // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
+                                self.attributes['enqueuedToken'] = null;
 
-                            if (canThrowCard.call(self)) {
-                                const cardTitle = 'Playing ' + podcast.title;
-                                const cardContent = 'Playing ' + podcast.title;
-                                self.response.cardRenderer(cardTitle, cardContent, null);
+                                if (canThrowCard.call(self)) {
+                                    const cardTitle = constants.appTitle;
+                                    const cardContent = 'Playing ' + audioAsset.title;
+                                    self.response.cardRenderer(cardTitle, cardContent, null);
+                                }
+
+                                self.response.audioPlayerPlay(playBehavior, audioAsset.url, token, null, offsetInMilliseconds);
+                                self.emit(':responseReady');
+                            });
+                            if (data.Item) {
+                                console.log("audio asset exists");
+                                emitter.emit("loaded", data.Item);
+                            } else {
+                                let params = {
+                                    TableName: constants.pollyQueueTableName,
+                                    Key: {
+                                        key: playlistData.Items[0].article_key,
+                                        index: playlistData.Items[0].article_index
+                                    }
+                                };
+                                console.log("get queued polly request query:", JSON.stringify(params));
+                                dynamodb.get(params, function (err, data) {
+                                    if (err) {
+                                        console.log(err, err.stack);
+                                    } else {
+                                        console.log("get queued polly request query response:", JSON.stringify(data));
+                                        if (data.Item) {
+                                            let article = data.Item;
+                                            const output_format = constants.audioAssetFormat;
+                                            let params = {
+                                                OutputFormat: output_format,
+                                                Text: article.text,
+                                                TextType: "text",
+                                                VoiceId: "Joanna"
+                                            };
+                                            console.log("polly request: " + JSON.stringify(params));
+
+                                            var polly = new AWS.Polly();
+                                            polly.synthesizeSpeech(params, function (err, data) {
+                                                if (err) console.log("ERROR", err, err.stack); // an error occurred
+                                                else {
+                                                    console.log(data); // successful response
+                                                    const fileName = `${article.key}-${article.index}.${output_format}`;
+                                                    const bucket = constants.audioAssetBucket;
+                                                    let param = {
+                                                        Bucket: bucket,
+                                                        Key: fileName,
+                                                        Body: data.AudioStream,
+                                                        ACL: 'public-read'
+                                                    };
+
+                                                    var s3 = new AWS.S3();
+                                                    s3.putObject(param, function (resp) {
+                                                        console.log('Successfully uploaded package.');
+
+                                                        let url = `https://s3.amazonaws.com/${bucket}/${fileName}`;
+                                                        console.log(`URL is ${url}`);
+                                                        let params = {
+                                                            TableName: constants.audioAssetTableName,
+                                                            Item: {
+                                                                title: article.title,
+                                                                url: url,
+                                                                key: article.key,
+                                                                index: article.index,
+                                                                numSlices: article.numSlices
+                                                            }
+                                                        };
+                                                        dynamodb.put(params, function (err) {
+                                                            if (err) console.log("ERROR", err, err.stack); // an error occurred
+                                                            else console.log("Audio asset successfully put into table");
+                                                        });
+                                                        emitter.emit("loaded", params.Item);
+                                                    });
+
+                                                }
+                                            });
+                                        }
+                                    }
+                                });
                             }
-
-                            self.response.audioPlayerPlay(playBehavior, podcast.url, token, null, offsetInMilliseconds);
-                            self.emit(':responseReady');
+                            
                         }
                     });
                 }

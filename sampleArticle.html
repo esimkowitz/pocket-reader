@@ -1,0 +1,159 @@
+<div class=\ "postArticle-content js-postField js-notesSource js-trackedPost\" data-post-id=\ "e9337f2c9444\" data-source=\
+    "post_page\" data-collection-id=\ "51e1d1745b32\" data-tracking-context=\ "postPage\" nodeIndex=\ "36\">
+    <section name=\ "68c4\" class=\ "section section--body section--first section--last\" nodeIndex=\ "39\">
+        <div class=\ "section-content\" nodeIndex=\ "40\">
+            <div class=\ "section-inner sectionLayout--insetColumn _RIL_KEEPER_CLASS_\" nodeIndex=\ "41\"></div>
+            <div class=\ "section-inner sectionLayout--outsetColumn _RIL_KEEPER_CLASS_\" nodeIndex=\ "43\">
+                <figure name=\ "4e3b\" id=\ "4e3b\" class=\
+                    "graf graf--figure graf--layoutOutsetCenter graf-after--h3 _RIL_KEEPER_CLASS_\" nodeIndex=\ "45\">
+                    <div class=\ "aspectRatioPlaceholder is-locked\" nodeIndex=\ "44\">
+                        <div class=\ "aspectRatioPlaceholder-fill\" nodeIndex=\ "46\"></div>
+                        <!--IMG_1-->
+                    </div>
+                </figure>
+            </div>
+            <div class=\ "section-inner sectionLayout--insetColumn _RIL_KEEPER_CLASS_\" nodeIndex=\ "47\">
+                <p name=\ "d13f\" id=\ "d13f\" class=\ "graf graf--p graf-after--figure _RIL_KEEPER_CLASS_\" nodeIndex=\
+                    "48\">The New York Times crossword has been an integral part of daily life for many people since it started appearing
+                    in print in 1942. When The Times built its first website in 1996, a digital version of the crossword
+                    followed shortly after as a stand-alone digital product. Though it was first built as a web-based Java
+                    applet, the crossword has grown into a suite of mobile apps and a fully interactive website that has
+                    over 300,000 paid subscribers. To serve puzzle data to that many subscribers and to handle advanced features
+                    like syncing game progress across multiple devices, our backend systems were running on Amazon Web Services
+                    with a<a href=\ "https://en.wikipedia.org/wiki/LAMP_%28software_bundle%29\" data-href=\
+                        "https://en.wikipedia.org/wiki/LAMP_(software_bundle)\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\ "173\"> LAMP-like architecture</a>.
+                    The introduction of the <a href=\ "https://www.nytimes.com/crosswords/game/mini\" data-href=\
+                        "https://www.nytimes.com/crosswords/game/mini\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\ "174\">free daily mini</a>                    crossword in August 2014 brought a larger daily audience which put a lot of strain on our architecture.</p>
+                <p
+                    name=\ "dc1d\" id=\ "dc1d\" class=\ "graf graf--p graf-after--p _RIL_KEEPER_CLASS_\" nodeIndex=\ "49\">As the crossword grew in popularity, our architecture started to hit its scaling limitations for handling
+                    game traffic. Due to the inelastic architecture of our AWS system, we needed to have the systems scaled
+                    up to handle our peak traffic at 10PM when the daily puzzle is published. The system is generally at
+                    that peak traffic for only a few minutes a day, so this setup was very costly for the New York Times
+                    Games team. Luckily, we at The Times recently decided to move all product development to the Google Cloud
+                    Platform where a variety of tools awaited to help us move faster and save money.</p>
+                    <p name=\ "e2c8\"
+                        id=\ "e2c8\" class=\ "graf graf--p graf-after--p _RIL_KEEPER_CLASS_\" nodeIndex=\ "50\">After shopping the Google product suite, we decided to rebuild our systems using <a href=\
+                            "https://golang.org/\" data-href=\ "https://golang.org/\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\"
+                            target=\ "_blank\" nodeIndex=\ "175\">Go</a>, <a href=\ "https://cloud.google.com/appengine/\" data-href=\
+                            "https://cloud.google.com/appengine/\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                            "176\">Google App Engine</a>, <a href=\ "https://cloud.google.com/datastore/\" data-href=\
+                            "https://cloud.google.com/datastore/\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                            "177\">Datastore</a>, <a href=\ "https://cloud.google.com/bigquery/\" data-href=\
+                            "https://cloud.google.com/bigquery/\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                            "178\">BigQuery</a>, <a href=\ "https://cloud.google.com/pubsub/\" data-href=\
+                            "https://cloud.google.com/pubsub/\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                            "179\">PubSub</a> and <a href=\ "https://cloud.google.com/container-engine/\" data-href=\
+                            "https://cloud.google.com/container-engine/\" class=\ "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                            "180\">Container Engine</a>. I&rsquo;ll discuss the architecture in greater detail in future posts but
+                        for now, I&rsquo;m going to concentrate on App Engine, which is the core of our system.</p>
+                    <p name=\
+                        "3858\" id=\ "3858\" class=\ "graf graf--p graf-after--p _RIL_KEEPER_CLASS_\" nodeIndex=\ "51\">The platform, which has been available as a Platform as a Service (PaaS) since 2008, abstracts away most
+                        of the inner workings of a web server and allows developers to concentrate on writing code to solve
+                        their business problems. Here are a few features worth highlighting that the Games team has taken
+                        advantage of:</p>
+                    <ul class=\ "postList\" nodeIndex=\ "53\">
+                        <li name=\ "b270\" id=\ "b270\" class=\ "graf graf--li graf-after--p\" nodeIndex=\ "52\"><strong class=\ "markup--strong markup--li-strong\">Local Development</strong>: Google provides an
+                            SDK that enables users to run a suite of services along with an admin interface, database and
+                            caching layer with a single command.</li>
+                        <li name=\ "b177\" id=\ "b177\" class=\
+                            "graf graf--li graf-after--li\" nodeIndex=\ "54\"><strong class=\ "markup--strong markup--li-strong\">Combined Access and App Logging</strong>: Using
+                            the provided logging libraries, developers can write application logs that the platform ties
+                            to server access logs within Google&rsquo;s cloud logging interface. This greatly simplifies
+                            debugging our systems as we can see exactly what happened within any given request.</li>
+                    </ul>
+                    <figure name=\ "cc7b\" id=\ "cc7b\" class=\
+                        "graf graf--figure graf-after--li _RIL_KEEPER_CLASS_ _RIL_KEEPER_CLASS_\" nodeIndex=\ "56\">
+                        <div class=\ "aspectRatioPlaceholder is-locked\" nodeIndex=\ "55\">
+                            <div class=\ "aspectRatioPlaceholder-fill\" nodeIndex=\ "57\"></div>
+                            <!--IMG_2-->
+                        </div>
+                    </figure>
+                    <ul class=\ "postList\" nodeIndex=\ "59\">
+                        <li name=\ "29a7\" id=\ "29a7\" class=\ "graf graf--li graf-after--figure\" nodeIndex=\ "58\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "181\">Monitoring/Alerting</strong>:
+                            To launch any system reliably, developers need insight into their system&rsquo;s performance.
+                            Without any extra configuration, the platform tracks response latency, error rates, network usage,
+                            memory, CPU usage and much more. Everything is displayed through Stackdriver dashboards, which
+                            offer the option to set up alerts based on metric data.</li>
+                        <li name=\ "8269\" id=\ "8269\" class=\
+                            "graf graf--li graf-after--li\" nodeIndex=\ "60\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "182\">User Authentication</strong>:
+                            By adding a single line to a service configuration, developers can force users to authenticate
+                            with their Google credentials. Google can also handle authorization so the service is exposed
+                            to only a select audience.</li>
+                        <li name=\ "cdc3\" id=\ "cdc3\" class=\
+                            "graf graf--li graf-after--li\" nodeIndex=\ "61\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "183\">HTTPS/DNS</strong>: When a
+                            service is deployed to app engine, it is immediately available on the internet with HTTPS enabled
+                            at a domain that looks like &ldquo;https://{service-name}-dot-{project-name}.appspot.com&rdquo;.
+                            This allows developers to go from concept to sharable prototype within minutes.</li>
+                        <li name=\
+                            "9daa\" id=\ "9daa\" class=\ "graf graf--li graf-after--li\" nodeIndex=\ "62\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "184\">PubSub Push-Style Subscriptions</strong>:
+                            Google&rsquo;s PubSub service <a href=\ "https://cloud.google.com/pubsub/docs/push\" data-href=\
+                                "https://cloud.google.com/pubsub/docs/push\" class=\ "markup--anchor markup--li-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                                "185\">can be configured to post to an HTTP endpoint</a> whenever a new message is delivered to a
+                            subscription. Traditionally this would require developers to add an additional layer of security,
+                            but App Engine manages that for you. Using this concept, we can easily fan out large workloads
+                            to a fleet of servers to do offline tasks like personal statistic calculations and <a href=\
+                                "https://youtu.be/3NwWiSEr4NE\" data-href=\ "https://youtu.be/3NwWiSEr4NE\" class=\ "markup--anchor markup--li-anchor\" rel=\
+                                "noopener\" target=\ "_blank\" nodeIndex=\ "186\">bulk data loads into BigQuery.</a></li>
+                    </ul>
+                    <p name=\ "7b28\" id=\ "7b28\" class=\ "graf graf--p graf-after--li _RIL_KEEPER_CLASS_\" nodeIndex=\
+                        "63\">While most of our replatforming to App Engine has seemed almost magical at times, some of the out-of-the-box
+                        features didn&rsquo;t meet our needs. While none of the issues were blockers, our work-arounds may
+                        be useful for other teams considering the platform.</p>
+                    <ul class=\ "postList\" nodeIndex=\ "65\">
+                        <li name=\ "04bb\" id=\ "04bb\" class=\ "graf graf--li graf-after--p\" nodeIndex=\ "64\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "187\">Deployment Tools</strong>:
+                            Google does provide some excellent tools for versioning and deploying code to App Engine, but
+                            we use <a href=\ "http://readme.drone.io/\" data-href=\ "http://readme.drone.io/\" class=\
+                                "markup--anchor markup--li-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\ "188\">Drone CI</a> at The Times and there
+                            was no existing plugin so we developed one that would work well with Drone and App Engine and
+                            recently <a href=\
+                                "https://open.nytimes.com/continuous-deployment-to-google-cloud-platform-with-drone-7078fe0c2eaf\" data-href=\
+                                "https://open.nytimes.com/continuous-deployment-to-google-cloud-platform-with-drone-7078fe0c2eaf\" class=\ "markup--anchor markup--li-anchor\" target=\ "_blank\" nodeIndex=\ "189\">open sourced it</a>.</li>
+                        <li
+                            name=\ "ab09\" id=\ "ab09\" class=\ "graf graf--li graf-after--li\" nodeIndex=\ "66\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "190\">API Security</strong>: While
+                            user authentication works great on App Engine, authenticating other services is a little more
+                            difficult. Google&rsquo;s Cloud Endpoints product is not yet available for App Engine and Go
+                            so we added logic to our services for whitelisting IP addresses to restrict access to non-production
+                            environments. For internal requests from one App Engine service to another, we rely on <a href=\
+                                "https://cloud.google.com/appengine/docs/standard/go/appidentity/#asserting_identity_to_other_app_engine_apps\" data-href=\
+                                "https://cloud.google.com/appengine/docs/standard/go/appidentity/#asserting_identity_to_other_app_engine_apps\" class=\ "markup--anchor markup--li-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\
+                                "191\">a non-spoofable HTTP header</a>. In the future we hope to rely on Google&rsquo;s OAuth tooling
+                            within App Engine.</li>
+                            <li name=\ "0ed5\" id=\ "0ed5\" class=\
+                                "graf graf--li graf-after--li\" nodeIndex=\ "67\"><strong class=\ "markup--strong markup--li-strong\" nodeIndex=\ "192\">Autoscaling</strong>:
+                                Autoscaling is one of App Engine&rsquo;s strengths, but it did have some initial problems
+                                with our 10pm traffic spike, which you can see in the chart below.</li>
+                    </ul>
+                    <figure name=\ "3b95\" id=\ "3b95\" class=\
+                        "graf graf--figure graf-after--li _RIL_KEEPER_CLASS_ _RIL_KEEPER_CLASS_\" nodeIndex=\ "69\">
+                        <div class=\ "aspectRatioPlaceholder is-locked\" nodeIndex=\ "68\">
+                            <div class=\ "aspectRatioPlaceholder-fill\" nodeIndex=\ "70\"></div>
+                            <!--IMG_3-->
+                        </div>
+                    </figure>
+                    <p name=\ "c49a\" id=\ "c49a\" class=\ "graf graf--p graf-after--figure _RIL_KEEPER_CLASS_\" nodeIndex=\
+                        "71\">Since our traffic spike is predictable, we ended up resolving this by adding a <a href=\
+                            "https://cloud.google.com/appengine/docs/standard/go/config/cron\" data-href=\ "https://cloud.google.com/appengine/docs/standard/go/config/cron\" class=\
+                            "markup--anchor markup--p-anchor\" rel=\ "noopener\" target=\ "_blank\" nodeIndex=\ "193\">cron</a> to hit a special endpoint on our
+                        service once shortly before the spike to scale the system up, and again just after to scale down
+                        to normal levels. This special endpoint uses App Engine&rsquo;s admin API to quickly add or reduce
+                        additional idle instances to handle the brief increase in traffic.</p>
+                    <p name=\ "0182\" id=\
+                        "0182\" class=\ "graf graf--p graf-after--p _RIL_KEEPER_CLASS_\" nodeIndex=\ "72\">Though we migrated to GCP about seven months ago, all games API traffic is flowing through App Engine
+                        and 90% of the traffic is served purely by App Engine services and GCP databases.</p>
+                    <p name=\
+                        "7b74\" id=\ "7b74\" class=\ "graf graf--p graf-after--p graf--trailing _RIL_KEEPER_CLASS_\" nodeIndex=\
+                        "73\">This accomplishment would not have been possible for our three-person team of engineers to achieve without
+                        the tools and abstractions provided by Google and App Engine. Beyond being able to quickly move to
+                        a more reliable platform, we&rsquo;ve also managed to cut our infrastructure costs in <em class=\
+                            "markup--em markup--p-em\" nodeIndex=\ "194\">half</em> during this time period. As gaming at The New York Times continues
+                        to grow, I&rsquo;m confident we made the right choices to enable us to experiment, iterate and scale
+                        at speed with ease.</p>
+            </div>
+        </div>
+    </section>
+</div>
+<div style=\ "font-style:italic;font-size:11px;line-height:12.5px;opacity:0.8;padding-top:12px;padding-bottom:12px;\">&copy; 2017 The New York Times Company.<br><br>\n\t\t\t\tThe content you have chosen to save (which may include videos, articles,
+    \n\t\t\t\timages and other copyrighted materials) is intended for your personal, noncommercial use. \n\t\t\t\tSuch content
+    is owned or controlled by The New York Times Company or the party credited \n\t\t\t\tas the content provider. Please
+    refer to nytimes.com and the Terms of Service available \n\t\t\t\ton its website for information and restrictions related
+    to the content.</div>

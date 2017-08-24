@@ -1,6 +1,8 @@
 // This function makes XML HTTP requests to the specified URL containing the specified data in the
 // specified format. The response is handled by the specified callback function.
 
+'use strict';
+
 var XMLHttpRequest1 = require("xmlhttprequest").XMLHttpRequest;
 
 function makeRequest(url, data, callback, method = "JSON") {
