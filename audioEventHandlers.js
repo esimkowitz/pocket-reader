@@ -3,6 +3,8 @@
 const Alexa = require('alexa-sdk');
 // var audioData = {};
 const constants = require('./constants');
+const audioAssets = require('./audioAssets');
+
 let AWS = require('aws-sdk');
 AWS.config.update({
     region: 'us-east-1'
@@ -122,34 +124,17 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                     if (err) {
                         console.log(err, err.stack);
                     } else {
-                        console.log("playlist items result:", JSON.stringify(data));
-                        let params = {
-                            TableName: constants.audioAssetTableName,
-                            KeyConditionExpression: "(#article_key = :key) AND (#article_index = :index)",
-                            ExpressionAttributeNames: {
-                                "#article_key": "key",
-                                "#article_index": "index"
-                            },
-                            ExpressionAttributeValues: {
-                                ":key": data.Items[0].article_key,
-                                ":index": data.Items[0].article_index
-                            }
-                        };
-                        console.log("get audio asset query:", JSON.stringify(params));
-                        dynamodb.get(params, function (err, data) {
-                            if (err) {
-                                console.log(err, err.stack);
-                            } else {
-                                console.log("get audio asset result:", JSON.stringify(data));
-                                let podcast = data.Item;
-                                let expectedPreviousToken = self.attributes['token'];
-                                let offsetInMilliseconds = 0;
+                        console.log("playlist items query result:", JSON.stringify(data));
+                        audioAssets.get(data.Items[0].article_key, data.Items[0].article_index, function (audioAsset) {
+                            console.log("audioAsset", JSON.stringify(audioAsset));
+                            let expectedPreviousToken = self.attributes['token'];
+                            let offsetInMilliseconds = 0;
 
-                                self.response.audioPlayerPlay(playBehavior, podcast.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
-                                console.log("response:", JSON.stringify(self.response));
-                                self.emit(':responseReady');
-                            }
+                            self.response.audioPlayerPlay(playBehavior, audioAsset.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
+                            console.log("response:", JSON.stringify(self.response));
+                            self.emit(':responseReady');
                         });
+                        
                     }
                 });
             }

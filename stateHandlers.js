@@ -5,6 +5,7 @@ const EventEmitter = require('events');
 const constants = require('./constants');
 const requests = require('./requests');
 const htmlToText = require('./htmlToText');
+const audioAssets = require('./audioAssets');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -237,8 +238,18 @@ let stateHandlers = {
                                                             }
                                                         });
                                                         if (index + 1 >= assets.length)
-                                                            // FIXME: add section to look for missing audio assets in the polly queue and add them
-                                                            // to the playlist if present (use the new field numSlices for reference)    
+                                                            while (++index < asset.numSlices) {
+                                                                batchWriteParams.RequestItems[constants.playlistTableName].push({
+                                                                    PutRequest: {
+                                                                        Item: {
+                                                                            access_token: access_token,
+                                                                            order: orderCount++,
+                                                                            article_key: key,
+                                                                            article_index: index
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
                                                             emitter.emit("push");
                                                     });
                                                 } else {
@@ -692,110 +703,21 @@ var controller = function () {
                 if (err) {
                     console.log(err, err.stack);
                 } else {
-                    let playlistData = data;
                     console.log("playlist items query result:", JSON.stringify(data));
-                    let params = {
-                        TableName: constants.audioAssetTableName,
-                        Key: {
-                            key: playlistData.Items[0].article_key,
-                            index: playlistData.Items[0].article_index
+                    audioAssets.get(data.Items[0].article_key, data.Items[0].article_index, function (audioAsset) {
+                        console.log("audioAsset", JSON.stringify(audioAsset));
+                        const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
+                        // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
+                        self.attributes['enqueuedToken'] = null;
+
+                        if (canThrowCard.call(self)) {
+                            const cardTitle = constants.appTitle;
+                            const cardContent = 'Playing ' + audioAsset.title;
+                            self.response.cardRenderer(cardTitle, cardContent, null);
                         }
-                    };
-                    console.log("get audio asset query:", JSON.stringify(params));
-                    dynamodb.get(params, function (err, data) {
-                        if (err) {
-                            console.log(err, err.stack);
-                        } else {
-                            console.log("get audio asset result:", JSON.stringify(data));
-                            let emitter = new EventEmitter();
-                            emitter.on("loaded", function (audioAsset) {
-                                console.log("audioAsset", JSON.stringify(audioAsset));
-                                const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
-                                // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
-                                self.attributes['enqueuedToken'] = null;
 
-                                if (canThrowCard.call(self)) {
-                                    const cardTitle = constants.appTitle;
-                                    const cardContent = 'Playing ' + audioAsset.title;
-                                    self.response.cardRenderer(cardTitle, cardContent, null);
-                                }
-
-                                self.response.audioPlayerPlay(playBehavior, audioAsset.url, token, null, offsetInMilliseconds);
-                                self.emit(':responseReady');
-                            });
-                            if (data.Item) {
-                                console.log("audio asset exists");
-                                emitter.emit("loaded", data.Item);
-                            } else {
-                                let params = {
-                                    TableName: constants.pollyQueueTableName,
-                                    Key: {
-                                        key: playlistData.Items[0].article_key,
-                                        index: playlistData.Items[0].article_index
-                                    }
-                                };
-                                console.log("get queued polly request query:", JSON.stringify(params));
-                                dynamodb.get(params, function (err, data) {
-                                    if (err) {
-                                        console.log(err, err.stack);
-                                    } else {
-                                        console.log("get queued polly request query response:", JSON.stringify(data));
-                                        if (data.Item) {
-                                            let article = data.Item;
-                                            const output_format = constants.audioAssetFormat;
-                                            let params = {
-                                                OutputFormat: output_format,
-                                                Text: article.text,
-                                                TextType: "text",
-                                                VoiceId: "Joanna"
-                                            };
-                                            console.log("polly request: " + JSON.stringify(params));
-
-                                            var polly = new AWS.Polly();
-                                            polly.synthesizeSpeech(params, function (err, data) {
-                                                if (err) console.log("ERROR", err, err.stack); // an error occurred
-                                                else {
-                                                    console.log(data); // successful response
-                                                    const fileName = `${article.key}-${article.index}.${output_format}`;
-                                                    const bucket = constants.audioAssetBucket;
-                                                    let param = {
-                                                        Bucket: bucket,
-                                                        Key: fileName,
-                                                        Body: data.AudioStream,
-                                                        ACL: 'public-read'
-                                                    };
-
-                                                    var s3 = new AWS.S3();
-                                                    s3.putObject(param, function (resp) {
-                                                        console.log('Successfully uploaded package.');
-
-                                                        let url = `https://s3.amazonaws.com/${bucket}/${fileName}`;
-                                                        console.log(`URL is ${url}`);
-                                                        let params = {
-                                                            TableName: constants.audioAssetTableName,
-                                                            Item: {
-                                                                title: article.title,
-                                                                url: url,
-                                                                key: article.key,
-                                                                index: article.index,
-                                                                numSlices: article.numSlices
-                                                            }
-                                                        };
-                                                        dynamodb.put(params, function (err) {
-                                                            if (err) console.log("ERROR", err, err.stack); // an error occurred
-                                                            else console.log("Audio asset successfully put into table");
-                                                        });
-                                                        emitter.emit("loaded", params.Item);
-                                                    });
-
-                                                }
-                                            });
-                                        }
-                                    }
-                                });
-                            }
-                            
-                        }
+                        self.response.audioPlayerPlay(playBehavior, audioAsset.url, token, null, offsetInMilliseconds);
+                        self.emit(':responseReady');
                     });
                 }
             });
