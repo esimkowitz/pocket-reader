@@ -1,11 +1,9 @@
 'use strict';
 
 const Alexa = require('alexa-sdk');
-const EventEmitter = require('events');
 const constants = require('./constants');
 const requests = require('./requests');
-const htmlToText = require('./htmlToText');
-const audioAssets = require('./audioAssets');
+const playlist = require('./playlist');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -160,49 +158,26 @@ let stateHandlers = {
                             };
                             let url = 'https://getpocket.com/v3/get';
                             requests.makeRequest(url, request_data, function (err, res) {
-                                // let response_text = "Failure",
-                                //     card_info = "Failure";
                                 let article_list = {},
                                     sort_id_list = {};
                                 let count = 0;
                                 if (!err) {
-                                    // Gather the titles of the retrieved articles and formulate the announcement
                                     if (res.status && res.complete) {
                                         article_list = res.list;
-                                        // let article_title_str_spoken = "",
-                                        //     article_title_str_written = "";
                                         for (let key in article_list) {
                                             sort_id_list[article_list[key].sort_id] = key;
                                             count++;
                                         }
-                                        // for (let i = 0; i < count; ++i) {
-                                        //     let article = article_list[sort_id_list[String(i)]];
-                                        //     article_title_str_spoken += `${article.resolved_title}, `;
-                                        //     article_title_str_written += `* ${article.resolved_title}\n`;
-                                        // }
-                                        // article_title_str_spoken = article_title_str_spoken.substr(0, article_title_str_spoken.length - 2);
-                                        // article_title_str_written = article_title_str_written.substr(0, article_title_str_written.length - 1);
-                                        // response_text = `${LANGUAGE.reading_following}. ${article_title_str_spoken}`;
-                                        // response_text = response_text.replace(/&/g, "and");
-                                        // card_info = `${LANGUAGE.reading_following}:\n\n${article_title_str_written}`;
                                     }
                                 }
-                                // self.attributes['intentOutput'] = response_text;
 
-                                // Announce the articles that will be read by Pocket Reader
-                                // if (self.attributes['dialogSession']) {
-                                //     self.emit(':askWithCard', response_text, LANGUAGE.still_listening, LANGUAGE.card_title, card_info);
-                                // } else {
-                                //     self.emit(':tellWithCard', response_text, LANGUAGE.card_title, card_info);
-                                // }
-
-                                // Use Pocket's Article View API to obtain the parsed text of the articles.
+                                // Gather the requested articles, either from the cached audio files or
+                                // from Pocket
                                 let batchWriteParams = {
                                     RequestItems: {}
                                 };
                                 batchWriteParams.RequestItems[constants.playlistTableName] = [];
-                                batchWriteParams.RequestItems[constants.pollyQueueTableName] = [];
-                                let emitter = new EventEmitter();
+
                                 if (!err && res.status && res.complete) {
                                     // For debugging purposes, set count to 1.
                                     // count = 1;
@@ -210,132 +185,46 @@ let stateHandlers = {
                                     for (let i = 0; i < count; ++i) {
                                         let article = article_list[sort_id_list[String(i)]];
                                         const key = article.resolved_id;
-                                        let params = {
-                                            TableName: constants.audioAssetTableName,
-                                            KeyConditionExpression: "#article_key = :article",
-                                            ExpressionAttributeNames: {
-                                                "#article_key": "key"
-                                            },
-                                            ExpressionAttributeValues: {
-                                                ":article": key
-                                            },
-                                        };
-                                        console.log("audio asset query:", JSON.stringify(params));
-                                        dynamodb.query(params, function (err, data) {
-                                            console.log("audio asset query response:", JSON.stringify(data));
-                                            if (!err) {
-                                                if (data.Count > 0) {
-                                                    console.log("Asset exists");
-                                                    data.Items.forEach(function (asset, index, assets) {
-                                                        batchWriteParams.RequestItems[constants.playlistTableName].push({
-                                                            PutRequest: {
-                                                                Item: {
-                                                                    access_token: access_token,
-                                                                    order: orderCount++,
-                                                                    article_key: key,
-                                                                    article_index: index
-                                                                }
-                                                            }
-                                                        });
-                                                        if (index + 1 >= assets.length)
-                                                            while (++index < asset.numSlices) {
-                                                                batchWriteParams.RequestItems[constants.playlistTableName].push({
-                                                                    PutRequest: {
-                                                                        Item: {
-                                                                            access_token: access_token,
-                                                                            order: orderCount++,
-                                                                            article_key: key,
-                                                                            article_index: index
-                                                                        }
-                                                                    }
-                                                                });
-                                                            }
-                                                            emitter.emit("push");
-                                                    });
-                                                } else {
-                                                    console.log("Asset doesn't exist");
-                                                    let request_data = {
-                                                        'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
-                                                        'url': encodeURIComponent(article.resolved_url),
-                                                        'images': '0',
-                                                        'videos': '0',
-                                                        'refresh': '0',
-                                                        'output': 'json'
-                                                    };
-                                                    let url = 'https://text.getpocket.com/v3/text';
-                                                    requests.makeRequest(url, request_data, function (err, res) {
-                                                        if (!err) {
-                                                            console.log("Article View response:", JSON.stringify(res));
-                                                            // let response_text = `${LANGUAGE.reading} ${res.title}.`;
-                                                            let response_texts = htmlToText.convert(res.article);
-                                                            response_texts.forEach(function (response_text, index, response_texts) {
 
-                                                                batchWriteParams.RequestItems[constants.playlistTableName].push({
-                                                                    PutRequest: {
-                                                                        Item: {
-                                                                            access_token: access_token,
-                                                                            order: orderCount++,
-                                                                            article_key: key,
-                                                                            article_index: index
-                                                                        }
-                                                                    }
-                                                                });
-                                                                batchWriteParams.RequestItems[constants.pollyQueueTableName].push({
-                                                                    PutRequest: {
-                                                                        Item: {
-                                                                            key: key,
-                                                                            index: index,
-                                                                            numSlices: response_texts.length,
-                                                                            title: res.title,
-                                                                            text: response_text
-                                                                        }
-                                                                    }
-                                                                });
-                                                                if (index + 1 >= response_texts.length)
-                                                                    emitter.emit("push");
-                                                            });
-
-                                                        }
-                                                    }, "FORM");
+                                        batchWriteParams.RequestItems[constants.playlistTableName].push({
+                                            PutRequest: {
+                                                Item: {
+                                                    access_token: access_token,
+                                                    order: orderCount++,
+                                                    article_key: key,
+                                                    article_url: article.resolved_url,
+                                                    curr_index: 0
                                                 }
-                                            } else {
-                                                console.log(err, err.stack);
                                             }
                                         });
                                     }
                                 }
-                                let pushCount = 0;
-                                emitter.on("push", function () {
-                                    if (++pushCount >= fetch_data['number']) {
-                                        console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
-                                        let arrays = [];
-                                        const size = 25;
-                                        console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
-                                        Object.keys(batchWriteParams.RequestItems).forEach(function (key, index, keys) {
-                                            console.log(key, index, keys.length);
-                                            let a = batchWriteParams.RequestItems[key];
-                                            while (a.length > 0) {
-                                                let temp = {
-                                                    RequestItems: {}
-                                                };
-                                                temp.RequestItems[key] = a.splice(0, size);
-                                                arrays.push(temp);
-                                            }
-                                            if (index + 1 >= keys.length) {
-                                                // console.log("arrays:", JSON.stringify(arrays));
-                                                console.log("split batchWrite params:", JSON.stringify(arrays));
-                                                arrays.forEach(function (params, index, paramsArray) {
-                                                    dynamodb.batchWrite(params, function (err, data) {
-                                                        if (err) {
-                                                            console.log('ERROR: Dynamo failed: ' + err);
-                                                        } else {
-                                                            console.log('put audio asset and playlist entry batchWrite success');
-                                                            if (index + 1 >= paramsArray.length)
-                                                                self.emit('PlayAudio');
-                                                        }
-                                                    });
-                                                });
-                                            }
+                                console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
+                                let arrays = [];
+                                const size = 25;
+                                console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
+                                Object.keys(batchWriteParams.RequestItems).forEach(function (key, index, keys) {
+                                    console.log(key, index, keys.length);
+                                    let a = batchWriteParams.RequestItems[key];
+                                    while (a.length > 0) {
+                                        let temp = {
+                                            RequestItems: {}
+                                        };
+                                        temp.RequestItems[key] = a.splice(0, size);
+                                        arrays.push(temp);
+                                    }
+                                    if (index + 1 >= keys.length) {
+                                        console.log("split batchWrite params:", JSON.stringify(arrays));
+                                        arrays.forEach(function (params, index, paramsArray) {
+                                            dynamodb.batchWrite(params, function (err, data) {
+                                                if (err) {
+                                                    console.log('ERROR: Dynamo failed: ' + err);
+                                                } else {
+                                                    console.log('put audio asset and playlist entry batchWrite success');
+                                                    if (index + 1 >= paramsArray.length)
+                                                        self.emit('PlayAudio');
+                                                }
+                                            });
                                         });
                                     }
                                 });
@@ -358,7 +247,6 @@ let stateHandlers = {
          *  All Intent Handlers for state : START_MODE
          */
         'FetchArticleIntent': function () {
-            // this.emit('Reflect', this.event.request);
             let request = this.event.request;
 
             //  Change state to FETCH_MODE
@@ -371,20 +259,6 @@ let stateHandlers = {
             }
         },
         'LaunchRequest': function () {
-            // // Initialize Attributes
-            // this.attributes['playOrder'] = Array.apply(null, {
-            //     length: audioData.length
-            // }).map(Number.call, Number);
-            // this.attributes['index'] = 0;
-            // this.attributes['offsetInMilliseconds'] = 0;
-            // this.attributes['loop'] = true;
-            // this.attributes['shuffle'] = false;
-            // this.attributes['playbackIndexChanged'] = true;
-            // //  Change state to START_MODE
-            // this.handler.state = constants.states.START_MODE;
-
-            // this.attributes['dialogSession'] = true;
-
             // If the access_token isn't set, the user must link their Pocket account to Alexa's services.
             if (this.event.session.user.accessToken === undefined) {
 
@@ -682,44 +556,25 @@ var controller = function () {
                 this.attributes['playbackFinished'] = false;
             }
 
-            var token = String(this.attributes['playOrder'][this.attributes['index']]);
-            var playBehavior = 'REPLACE_ALL';
-            let access_token = this.event.session.user.accessToken;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
-                ExpressionAttributeNames: {
-                    "#token": "access_token",
-                    "#order": "order"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token,
-                    ":curr_index": this.attributes['playOrder'][this.attributes['index']]
-                }
-            };
-            console.log("playlist items query:", JSON.stringify(params));
+            const token = String(this.attributes['playOrder'][this.attributes['index']]);
+            const playBehavior = 'REPLACE_ALL';
+            const access_token = this.event.session.user.accessToken;
+            const curr_index = this.attributes['playOrder'][this.attributes['index']];
             let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    console.log("playlist items query result:", JSON.stringify(data));
-                    audioAssets.get(data.Items[0].article_key, data.Items[0].article_index, function (audioAsset) {
-                        console.log("audioAsset", JSON.stringify(audioAsset));
-                        const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
-                        // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
-                        self.attributes['enqueuedToken'] = null;
+            playlist.getNextAudioAsset(access_token, curr_index, function (audioAsset) {
+                console.log("audioAsset", JSON.stringify(audioAsset));
+                const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
+                // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
+                self.attributes['enqueuedToken'] = null;
 
-                        if (canThrowCard.call(self)) {
-                            const cardTitle = constants.appTitle;
-                            const cardContent = 'Playing ' + audioAsset.title;
-                            self.response.cardRenderer(cardTitle, cardContent, null);
-                        }
-
-                        self.response.audioPlayerPlay(playBehavior, audioAsset.url, token, null, offsetInMilliseconds);
-                        self.emit(':responseReady');
-                    });
+                if (canThrowCard.call(self)) {
+                    const cardTitle = constants.appTitle;
+                    const cardContent = 'Playing ' + audioAsset.title;
+                    self.response.cardRenderer(cardTitle, cardContent, null);
                 }
+
+                self.response.audioPlayerPlay(playBehavior, audioAsset.url, token, null, offsetInMilliseconds);
+                self.emit(':responseReady');
             });
         },
         stop: function () {
@@ -730,6 +585,7 @@ var controller = function () {
             this.response.audioPlayerStop();
             this.emit(':responseReady');
         },
+        // TODO: Update playNext to play next article, not next audio asset.
         playNext: function () {
             /*
              *  Called when AMAZON.NextIntent or PlaybackController.NextCommandIssued is invoked.
@@ -778,6 +634,7 @@ var controller = function () {
                 }
             });
         },
+        // TODO: Update playPrevious to play previous article, not previous audio asset.
         playPrevious: function () {
             /*
              *  Called when AMAZON.PreviousIntent or PlaybackController.PreviousCommandIssued is invoked.
@@ -884,6 +741,7 @@ var controller = function () {
                 }
             });
         },
+        // TODO: Change startOver to start at the beginning of the article, not the audioAsset.
         startOver: function () {
             // Start over the current audio file.
             this.attributes['offsetInMilliseconds'] = 0;

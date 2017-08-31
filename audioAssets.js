@@ -10,7 +10,39 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
     region: 'us-east-1'
 });
 
-function getAudioAsset(key, index, callback) {
+// If numSlices is not a property of the playlist table entry, add it for quicker/easier
+// querying in the future.
+function addNumSlices(playlist_item, numSlices, callback) {
+    if (!playlist_item.hasOwnProperty("numSlices")) {
+        let params = {
+            TableName: constants.playlistTableName,
+            Key: {
+                "access_token": playlist_item.access_token,
+                "order": playlist_item.curr_index
+            },
+            UpdateExpression: "set numSlices = :s",
+            ExpressionAttributeValues: {
+                ":s": numSlices
+            },
+            ReturnValues: "UPDATED_NEW"
+        };
+        console.log("update playlist item query: " + JSON.stringify(params));
+        dynamodb.update(params, function (err, data) {
+            if (err) {
+                console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
+            } else {
+                console.log("UpdateItem succeeded: " + "\n" + JSON.stringify(data, undefined, 2));
+                callback();
+            }
+        });
+    } else {
+        callback();
+    }
+}
+
+function getAudioAsset(playlist_item, callback) {
+    let key = playlist_item.article_key;
+    let index = playlist_item.curr_index;
     let params = {
         TableName: constants.audioAssetTableName,
         Key: {
@@ -26,7 +58,9 @@ function getAudioAsset(key, index, callback) {
             console.log("get audio asset result:", JSON.stringify(data));
             if (data.Item) {
                 console.log("audio asset exists");
-                callback(data.Item);
+                addNumSlices(playlist_item, data.Item.numSlices, function () {
+                    callback(data.Item);
+                });
             } else {
                 let params = {
                     TableName: constants.pollyQueueTableName,
@@ -101,7 +135,9 @@ function getAudioAsset(key, index, callback) {
                                         dynamodb.batchWrite(batchWriteParams, function (err) {
                                             if (err) console.log("ERROR", err, err.stack); // an error occurred
                                             else console.log("Batch write successful, asset put in table, deleted from Polly queue");
-                                            callback(batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item);
+                                            addNumSlices(playlist_item, batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item.numSlices, function () {
+                                                callback(batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item);
+                                            });
                                         });
                                     });
 

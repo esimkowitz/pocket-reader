@@ -1,9 +1,8 @@
 'use strict';
 
 const Alexa = require('alexa-sdk');
-// var audioData = {};
 const constants = require('./constants');
-const audioAssets = require('./audioAssets');
+const playlist = require('./playlist');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -71,20 +70,14 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
              */
             return this.context.succeed(true);
         }
-        let enqueueIndex = this.attributes['index'];
-        enqueueIndex += 1;
         // Checking if  there are any items to be enqueued.
         let access_token = this.event.context.System.user.accessToken;
         let params = {
             TableName: constants.playlistTableName,
-            KeyConditionExpression: "#token = :access_token",
-            ExpressionAttributeNames: {
-                "#token": "access_token"
-            },
+            KeyConditionExpression: "access_token = :t",
             ExpressionAttributeValues: {
-                ":access_token": access_token
-            },
-            Select: "COUNT"
+                ":t": access_token
+            }
         };
         console.log("playlist numItems query:", JSON.stringify(params));
         let self = this;
@@ -92,6 +85,12 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
             if (err) {
                 console.log(err, err.stack);
             } else {
+                let enqueueIndex = self.attributes['index'];
+                let article = data.Items[enqueueIndex];
+                console.log("Current article: " + JSON.stringify(article));
+                if (article.curr_index >= article.numSlices) {
+                    enqueueIndex += 1;
+                }
                 console.log("enqueueIndex", enqueueIndex, "data.Count", data.Count);
                 if (enqueueIndex >= data.Count) {
                     if (self.attributes['loop']) {
@@ -103,39 +102,18 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                     }
                 }
                 // Setting attributes to indicate item is enqueued.
-                self.attributes['enqueuedToken'] = String(self.attributes['playOrder'][enqueueIndex]);
+                self.attributes['enqueuedToken'] = `${self.attributes['playOrder'][enqueueIndex]}-${article.curr_index}`;
 
                 let enqueueToken = self.attributes['enqueuedToken'];
                 const playBehavior = 'ENQUEUE';
-                let params = {
-                    TableName: constants.playlistTableName,
-                    KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
-                    ExpressionAttributeNames: {
-                        "#token": "access_token",
-                        "#order": "order"
-                    },
-                    ExpressionAttributeValues: {
-                        ":access_token": access_token,
-                        ":curr_index": self.attributes['playOrder'][enqueueIndex]
-                    }
-                };
-                console.log("playlist items query:", JSON.stringify(params));
-                dynamodb.query(params, function (err, data) {
-                    if (err) {
-                        console.log(err, err.stack);
-                    } else {
-                        console.log("playlist items query result:", JSON.stringify(data));
-                        audioAssets.get(data.Items[0].article_key, data.Items[0].article_index, function (audioAsset) {
-                            console.log("audioAsset", JSON.stringify(audioAsset));
-                            let expectedPreviousToken = self.attributes['token'];
-                            let offsetInMilliseconds = 0;
+                playlist.getNextAudioAsset(access_token, self.attributes['playOrder'][enqueueIndex], function (audioAsset) {
+                    console.log("audioAsset", JSON.stringify(audioAsset));
+                    let expectedPreviousToken = self.attributes['token'];
+                    let offsetInMilliseconds = 0;
 
-                            self.response.audioPlayerPlay(playBehavior, audioAsset.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
-                            console.log("response:", JSON.stringify(self.response));
-                            self.emit(':responseReady');
-                        });
-                        
-                    }
+                    self.response.audioPlayerPlay(playBehavior, audioAsset.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
+                    console.log("response:", JSON.stringify(self.response));
+                    self.emit(':responseReady');
                 });
             }
         });
