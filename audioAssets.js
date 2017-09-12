@@ -10,6 +10,8 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
     region: 'us-east-1'
 });
 
+// TODO: write a function to delete audio assets using the same article object that is passed in the get function.
+
 // If numSlices is not a property of the playlist table entry, add it for quicker/easier
 // querying in the future.
 function addNumSlices(playlist_item, numSlices, callback) {
@@ -26,7 +28,7 @@ function addNumSlices(playlist_item, numSlices, callback) {
             },
             ReturnValues: "UPDATED_NEW"
         };
-        console.log("update playlist item query: " + JSON.stringify(params));
+        // console.log("update playlist item query: " + JSON.stringify(params));
         dynamodb.update(params, function (err, data) {
             if (err) {
                 console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
@@ -50,7 +52,7 @@ function getAudioAsset(playlist_item, callback) {
             index: index
         }
     };
-    console.log("get audio asset query:", JSON.stringify(params));
+    // console.log("get audio asset query:", JSON.stringify(params));
     dynamodb.get(params, function (err, data) {
         if (err) {
             console.log(err, err.stack);
@@ -69,12 +71,12 @@ function getAudioAsset(playlist_item, callback) {
                         index: index
                     }
                 };
-                console.log("get queued polly request query:", JSON.stringify(params));
+                // console.log("get queued polly request query:", JSON.stringify(params));
                 dynamodb.get(params, function (err, data) {
                     if (err) {
                         console.log(err, err.stack);
                     } else {
-                        console.log("get queued polly request query response:", JSON.stringify(data));
+                        // console.log("get queued polly request query response:", JSON.stringify(data));
                         if (data.Item) {
                             let article = data.Item;
                             const output_format = constants.audioAssetFormat;
@@ -109,33 +111,39 @@ function getAudioAsset(playlist_item, callback) {
                                         let batchWriteParams = {
                                             RequestItems: {}
                                         };
-                                        batchWriteParams.RequestItems[constants.audioAssetTableName] = [
-                                            {
-                                                PutRequest: {
-                                                    Item: {
-                                                        title: article.title,
-                                                        url: url,
-                                                        key: article.key,
-                                                        index: article.index,
-                                                        numSlices: article.numSlices
-                                                    }
+                                        batchWriteParams.RequestItems[constants.audioAssetTableName] = [{
+                                            PutRequest: {
+                                                Item: {
+                                                    title: article.title,
+                                                    url: url,
+                                                    key: article.key,
+                                                    index: article.index,
+                                                    numSlices: article.numSlices
                                                 }
                                             }
-                                        ];
-                                        batchWriteParams.RequestItems[constants.pollyQueueTableName] = [
-                                            {
-                                                DeleteRequest: {
-                                                    Key: {
-                                                        key: article.key,
-                                                        index: article.index
-                                                    }
+                                        }];
+                                        batchWriteParams.RequestItems[constants.pollyQueueTableName] = [{
+                                            DeleteRequest: {
+                                                Key: {
+                                                    key: article.key,
+                                                    index: article.index
                                                 }
                                             }
-                                        ];
+                                        }];
                                         dynamodb.batchWrite(batchWriteParams, function (err) {
                                             if (err) console.log("ERROR", err, err.stack); // an error occurred
                                             else console.log("Batch write successful, asset put in table, deleted from Polly queue");
                                             addNumSlices(playlist_item, batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item.numSlices, function () {
+                                                // FIXME: doesn't work reliably
+                                                if ((playlist_item.curr_index + 1) < playlist_item.numSlices) {
+                                                    setTimeout(function () {
+                                                        var next_playlist_item = playlist_item;
+                                                        ++next_playlist_item.curr_index;
+                                                        getAudioAsset(next_playlist_item, function () {
+                                                            console.log("Finished fetch next item");
+                                                        });
+                                                    }, 0.1);
+                                                }
                                                 callback(batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item);
                                             });
                                         });

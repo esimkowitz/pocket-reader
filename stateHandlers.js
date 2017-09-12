@@ -82,7 +82,7 @@ let stateHandlers = {
                     ":access_token": access_token
                 }
             };
-            console.log("playlist entry query:", params);
+            // console.log("playlist entry query:", params);
             let self = this;
             dynamodb.query(params, function (err, data) {
                 if (err) {
@@ -199,10 +199,10 @@ let stateHandlers = {
                                         });
                                     }
                                 }
-                                console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
+                                // console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
                                 let arrays = [];
                                 const size = 25;
-                                console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
+                                // console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
                                 Object.keys(batchWriteParams.RequestItems).forEach(function (key, index, keys) {
                                     console.log(key, index, keys.length);
                                     let a = batchWriteParams.RequestItems[key];
@@ -214,7 +214,7 @@ let stateHandlers = {
                                         arrays.push(temp);
                                     }
                                     if (index + 1 >= keys.length) {
-                                        console.log("split batchWrite params:", JSON.stringify(arrays));
+                                        // console.log("split batchWrite params:", JSON.stringify(arrays));
                                         arrays.forEach(function (params, index, paramsArray) {
                                             dynamodb.batchWrite(params, function (err, data) {
                                                 if (err) {
@@ -284,7 +284,7 @@ let stateHandlers = {
                 },
                 Select: "COUNT"
             };
-            console.log("playlist numItems query:", JSON.stringify(params));
+            // console.log("playlist numItems query:", JSON.stringify(params));
             let self = this;
             dynamodb.query(params, function (err, data) {
                 if (err) {
@@ -292,7 +292,7 @@ let stateHandlers = {
                 } else {
                     if (!self.attributes['playOrder'] || self.attributes['playOrder'].length !== data.Count) {
 
-                        console.log("playlist numItems result:", JSON.stringify(data));
+                        // console.log("playlist numItems result:", JSON.stringify(data));
                         // Initialize Attributes if undefined.
                         self.attributes['playOrder'] = Array.apply(null, {
                             length: data.Count
@@ -465,7 +465,7 @@ let stateHandlers = {
                     ":curr_index": this.attributes['playOrder'][this.attributes['index']]
                 }
             };
-            console.log("playlist items query:", JSON.stringify(params));
+            // console.log("playlist items query:", JSON.stringify(params));
             let self = this;
             dynamodb.query(params, function (err, data) {
                 if (err) {
@@ -499,13 +499,13 @@ let stateHandlers = {
                     ":curr_index": this.attributes['playOrder'][this.attributes['index']]
                 }
             };
-            console.log("playlist items query:", JSON.stringify(params));
+            // console.log("playlist items query:", JSON.stringify(params));
             let self = this;
             dynamodb.query(params, function (err, data) {
                 if (err) {
                     console.log(err, err.stack);
                 } else {
-                    console.log("playlist items query result:", JSON.stringify(data));
+                    // console.log("playlist items query result:", JSON.stringify(data));
                     var message = 'You were listening to ' + data.Items[0].title +
                         ' Would you like to resume?';
                     var reprompt = 'You can say yes to resume or no to play from the top.';
