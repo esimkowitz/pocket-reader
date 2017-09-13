@@ -79,7 +79,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                 ":t": access_token
             }
         };
-        console.log("playlist numItems query:", JSON.stringify(params));
+        // console.log("playlist numItems query:", JSON.stringify(params));
         let self = this;
         dynamodb.query(params, function (err, data) {
             if (err) {

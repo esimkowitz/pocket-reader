@@ -102,7 +102,7 @@ function getAudioAsset(playlist_item, callback) {
                                         ACL: 'public-read'
                                     };
 
-                                    var s3 = new AWS.S3();
+                                    let s3 = new AWS.S3();
                                     s3.putObject(param, function (resp) {
                                         console.log('Successfully uploaded package.');
 
@@ -132,32 +132,59 @@ function getAudioAsset(playlist_item, callback) {
                                         }];
                                         dynamodb.batchWrite(batchWriteParams, function (err) {
                                             if (err) console.log("ERROR", err, err.stack); // an error occurred
-                                            else console.log("Batch write successful, asset put in table, deleted from Polly queue");
+                                            // else console.log("Batch write successful, asset put in table, deleted from Polly queue");
                                             addNumSlices(playlist_item, batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item.numSlices, function () {
-                                                // FIXME: doesn't work reliably
                                                 if ((playlist_item.curr_index + 1) < playlist_item.numSlices) {
-                                                    setTimeout(function () {
-                                                        var next_playlist_item = playlist_item;
-                                                        ++next_playlist_item.curr_index;
-                                                        getAudioAsset(next_playlist_item, function () {
-                                                            console.log("Finished fetch next item");
-                                                        });
-                                                    }, 0.1);
+                                                    // Made an anomymous function to solve reliability issues of timeout
+                                                    // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
+                                                    (function (next_playlist_item) {
+                                                        setTimeout(function () {
+                                                            ++next_playlist_item.curr_index;
+                                                            getAudioAsset(next_playlist_item, function () {
+                                                                console.log("Finished fetch next item");
+                                                            });
+                                                        }, 0.1);
+                                                    })(playlist_item);
                                                 }
                                                 callback(batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item);
                                             });
                                         });
                                     });
-
                                 }
                             });
                         }
                     }
                 });
             }
-
         }
     });
 }
 
+function deleteAudioAsset(playlist_item, callback) {
+    let s3 = new AWS.S3();
+    let params = {
+        Bucket: constants.audioAssetBucket,
+        Key: `${playlist_item.article_key}-${playlist_item.curr_index}.${constants.audioAssetFormat}`
+    };
+    s3.deleteObject(params, function (err, data) {
+        if (err) console.log(err, err.stack); // an error occurred
+        else {
+            let params = {
+                Key: {
+                    key: playlist_item.article_key,
+                    index: playlist_item.curr_index
+                },
+                TableName: constants.audioAssetTableName
+            }
+            dynamodb.delete(params, function (err, data) {
+                if (err) console.log(err, err.stack); // an error occurred
+                else {
+                    callback();
+                }
+            });
+        }; // successful response
+    });
+}
+
 exports.get = getAudioAsset;
+exports.delete = deleteAudioAsset;

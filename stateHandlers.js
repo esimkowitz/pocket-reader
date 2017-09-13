@@ -107,7 +107,7 @@ let stateHandlers = {
                         if (err) {
                             console.log('ERROR: unable to delete playlist entries: ' + err);
                         } else {
-                            console.log('Playlist entries deleted');
+                            // console.log('Playlist entries deleted');
                         }
                         let slots = self.event.request.intent.slots;
 
@@ -220,7 +220,7 @@ let stateHandlers = {
                                                 if (err) {
                                                     console.log('ERROR: Dynamo failed: ' + err);
                                                 } else {
-                                                    console.log('put audio asset and playlist entry batchWrite success');
+                                                    // console.log('put audio asset and playlist entry batchWrite success');
                                                     if (index + 1 >= paramsArray.length)
                                                         self.emit('PlayAudio');
                                                 }
