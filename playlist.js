@@ -34,8 +34,9 @@ function respond(article, index, callback) {
         } else {
             // console.log("UpdateItem succeeded: " + "\n" + JSON.stringify(data, undefined, 2));
             if (article.curr_index > 0) {
-                (function(last_article) {
+                (function(article) {
                     setTimeout(function () {
+                        var last_article = article;
                         --last_article.curr_index;
                         // FIXME: adding the functionality to delete already-played audio assets will introduce a bug where articles that aren't finished will be restarted and
                         // the full text will be fetched again, but once the snippet gets to the part of the article where the person stopped last, it'll find the existing unplayed
@@ -43,12 +44,13 @@ function respond(article, index, callback) {
                         // Come up with a way to either purge all audio assets for a playlist item when a person pauses playback or search and delete forgotten queued polly requests
                         // The first probably makes the most sense (just iterate through numSlices and call the new audioAssets.delete function when playback stops)
 
+                        // FIXME: Introduces bug where the playback gets stuck on one audio asset, playing it on repeat
                         // TODO: what about in cases where multiple people are listening to the same article? A more extensive (and thought-out) solution may be needed to account for this.
 
-                        audioAssets.delete(last_article, function () {
-                            console.log("previous audio asset deleted");
+                        audioAssets.delete(last_article, function (deletedAsset) {
+                            console.log(`audio asset '${deletedAsset.key}' deleted`);
                         });
-                    }, 10);
+                    }, 3000);
                 })(article);    
             }
             audioAssets.get(article, callback);
@@ -131,11 +133,13 @@ function getNextAudioAsset(access_token, index, callback) {
 
                                             // Push the title and the date the article was published to the front of the response_texts array so
                                             // that they'll be announced ahead of the article playing.
+
+                                            // FIXME: Article title is sometimes twice before the date is played, figure out why
                                             var datePublished = new Date(res.datePublished);
-                                            response_texts.unshift(`${datePublished.toDateString()}`);
-                                            response_texts.unshift(`${res.title}`);
-                                            console.log(JSON.stringify(res.authors));
-                                            // response_texts.unshift(`By ${res.title}`);
+                                            response_texts.unshift(datePublished.toDateString());
+                                            response_texts.unshift(res.title);
+                                            console.log("article authors: " + JSON.stringify(res.authors));
+
                                             let batchWriteParams = {
                                                 RequestItems: {}
                                             };

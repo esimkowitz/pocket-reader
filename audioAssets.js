@@ -137,13 +137,16 @@ function getAudioAsset(playlist_item, callback) {
                                                 if ((playlist_item.curr_index + 1) < playlist_item.numSlices) {
                                                     // Made an anomymous function to solve reliability issues of timeout
                                                     // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
-                                                    (function (next_playlist_item) {
+                                                    (function (playlist_item) {
                                                         setTimeout(function () {
+                                                            console.log("current playlist item: " + JSON.stringify(playlist_item));
+                                                            var next_playlist_item = playlist_item;
                                                             ++next_playlist_item.curr_index;
+                                                            console.log("next playlist item: " + JSON.stringify(next_playlist_item));
                                                             getAudioAsset(next_playlist_item, function () {
                                                                 console.log("Finished fetch next item");
                                                             });
-                                                        }, 0.1);
+                                                        }, 100);
                                                     })(playlist_item);
                                                 }
                                                 callback(batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item);
@@ -162,9 +165,10 @@ function getAudioAsset(playlist_item, callback) {
 
 function deleteAudioAsset(playlist_item, callback) {
     let s3 = new AWS.S3();
+    let assetKey = `${playlist_item.article_key}-${playlist_item.curr_index}.${constants.audioAssetFormat}`;
     let params = {
         Bucket: constants.audioAssetBucket,
-        Key: `${playlist_item.article_key}-${playlist_item.curr_index}.${constants.audioAssetFormat}`
+        Key: assetKey
     };
     s3.deleteObject(params, function (err, data) {
         if (err) console.log(err, err.stack); // an error occurred
@@ -179,7 +183,7 @@ function deleteAudioAsset(playlist_item, callback) {
             dynamodb.delete(params, function (err, data) {
                 if (err) console.log(err, err.stack); // an error occurred
                 else {
-                    callback();
+                    callback({key: assetKey});
                 }
             });
         }; // successful response
