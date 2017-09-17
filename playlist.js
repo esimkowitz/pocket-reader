@@ -27,34 +27,11 @@ function respond(article, index, callback) {
         },
         ReturnValues: "UPDATED_NEW"
     };
-    // console.log("update playlist item query: " + JSON.stringify(params));
 
     dynamodb.update(params, function (err, data) {
         if (err) {
             console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
         } else {
-            // console.log("UpdateItem succeeded: " + "\n" + JSON.stringify(data, undefined, 2));
-            if (article.curr_index > 0) {
-                (function (article) {
-                    setTimeout(function () {
-                        var last_article = article;
-                        --last_article.curr_index;
-                        // FIXME: adding the functionality to delete already-played audio assets will introduce a bug where articles that aren't finished will be restarted and
-                        // the full text will be fetched again, but once the snippet gets to the part of the article where the person stopped last, it'll find the existing unplayed
-                        // audio assets and will begin playing those, leaving the remaining polly requests for that article queued.
-                        // Come up with a way to either purge all audio assets for a playlist item when a person pauses playback or search and delete forgotten queued polly requests
-                        // The first probably makes the most sense (just iterate through numSlices and call the new audioAssets.delete function when playback stops)
-
-                        // FIXME: Introduces bug where the playback gets stuck on one audio asset, playing it on repeat
-                        // TODO: what about in cases where multiple people are listening to the same article? A more extensive (and thought-out) solution may be needed to account for this.
-
-                        // FIXME: the first and last audio assets for each article aren't deleted
-                        // audioAssets.delete(last_article, function (deletedAsset) {
-                        //     console.log(`audio asset '${deletedAsset.key}' deleted`);
-                        // });
-                    }, 3000);
-                })(article);
-            }
             audioAssets.get(article, callback);
         }
     });

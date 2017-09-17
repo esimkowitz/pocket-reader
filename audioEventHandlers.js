@@ -2,7 +2,6 @@
 
 const Alexa = require('alexa-sdk');
 const constants = require('./constants');
-const audioAssets = require('./audioAssets');
 const playlist = require('./playlist');
 
 let AWS = require('aws-sdk');
@@ -33,11 +32,22 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          * AudioPlayer.PlaybackFinished Directive received.
          * Confirming that audio file completed playing.
          * Storing details in dynamoDB using attributes.
+         * Deleting already-played audio assets.
          */
         console.log("PlaybackFinished Request");
         this.attributes['playbackFinished'] = true;
         this.attributes['enqueuedToken'] = false;
-        // TODO: See if adding patch below fixes bug where first and last audio assets aren't deleted
+
+        // FIXME: adding the functionality to delete already-played audio assets will introduce a bug where articles that aren't finished will be restarted and
+        // the full text will be fetched again, but once the snippet gets to the part of the article where the person stopped last, it'll find the existing unplayed
+        // audio assets and will begin playing those, leaving the remaining polly requests for that article queued.
+        // Come up with a way to either purge all audio assets for a playlist item when a person pauses playback or search and delete forgotten queued polly requests
+        // The first probably makes the most sense (just iterate through numSlices and call the new audioAssets.delete function when playback stops)
+
+        // FIXME: Introduces bug where the playback gets stuck on one audio asset, playing it on repeat
+        // TODO: what about in cases where multiple people are listening to the same article? A more extensive (and thought-out) solution may be needed to account for this.
+
+        // FIXME: the first and last audio assets for each article aren't deleted
         (function (self) {
             setImmediate(function () {
                 let access_token = self.event.context.System.user.accessToken;
@@ -45,26 +55,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                 console.log("access_token: " + access_token + ", enqueueIndex: " + enqueueIndex);
                 playlist.clearOldAudioAssets(access_token, enqueueIndex, function (data) {
                     console.log("audio assets cleared: " + JSON.stringify(data));
-                })
-                // let params = {
-                //     TableName: constants.playlistTableName,
-                //     KeyConditionExpression: "access_token = :t",
-                //     ExpressionAttributeValues: {
-                //         ":t": access_token
-                //     }
-                // };
-                // dynamodb.query(params, function (err, data) {
-                //     if (err) {
-                //         console.log(err, err.stack);
-                //     } else {
-                //         console.log("audio asset to be deleted: " + JSON.stringify(data));
-                //         let enqueueIndex = self.attributes['index'];
-                //         let article = data.Items[enqueueIndex];
-                //         audioAssets.delete(article, function (deletedAsset) {
-                //             console.log(`audio asset '${deletedAsset.key}' deleted`);
-                //         });
-                //     }
-                // });
+                });
             });  
         })(this);
         

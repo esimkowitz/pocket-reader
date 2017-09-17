@@ -185,9 +185,12 @@ let stateHandlers = {
                                     let orderCount = 0;
                                     for (let i = 0; i < count; ++i) {
                                         let article = article_list[sort_id_list[String(i)]];
+
+                                        // Create a random SHA-1 hash string, allowing an article to be played back
+                                        // by multiple users at the same time without interference.
                                         var SHA = new jsSHA('SHA-1', 'TEXT');
                                         SHA.update(Math.random());
-                                        let random_hash = SHA.getHash('HEX')
+                                        let random_hash = SHA.getHash('HEX');
                                         const key = `${random_hash}-${article.resolved_id}`;
 
                                         batchWriteParams.RequestItems[constants.playlistTableName].push({
