@@ -10,8 +10,6 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
     region: 'us-east-1'
 });
 
-// TODO: write a function to delete audio assets using the same article object that is passed in the get function.
-
 // If numSlices is not a property of the playlist table entry, add it for quicker/easier
 // querying in the future.
 function addNumSlices(playlist_item, numSlices, callback) {

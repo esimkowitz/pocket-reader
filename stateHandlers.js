@@ -188,7 +188,7 @@ let stateHandlers = {
 
                                         // Create a random SHA-1 hash string, allowing an article to be played back
                                         // by multiple users at the same time without interference.
-                                        var SHA = new jsSHA('SHA-1', 'TEXT');
+                                        var SHA = new jsSHA('SHA-1', 'BYTES');
                                         SHA.update(Math.random());
                                         let random_hash = SHA.getHash('HEX');
                                         const key = `${random_hash}-${article.resolved_id}`;
