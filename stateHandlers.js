@@ -214,7 +214,7 @@ let stateHandlers = {
                                         arrays.push(temp);
                                     }
                                     if (index + 1 >= keys.length) {
-                                        // console.log("split batchWrite params:", JSON.stringify(arrays));
+                                        console.log("split batchWrite params:", JSON.stringify(arrays));
                                         arrays.forEach(function (params, index, paramsArray) {
                                             dynamodb.batchWrite(params, function (err, data) {
                                                 if (err) {

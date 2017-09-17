@@ -42,6 +42,16 @@ function addNumSlices(playlist_item, numSlices, callback) {
     }
 }
 
+function getNextAudioAsset(playlist_item, callback) {
+    setTimeout(function () {
+        console.log("current playlist item: " + JSON.stringify(playlist_item));
+        var next_playlist_item = playlist_item;
+        ++next_playlist_item.curr_index;
+        console.log("next playlist item: " + JSON.stringify(next_playlist_item));
+        getAudioAsset(next_playlist_item, callback);
+    }, 100);
+}
+
 function getAudioAsset(playlist_item, callback) {
     let key = playlist_item.article_key;
     let index = playlist_item.curr_index;
@@ -61,6 +71,15 @@ function getAudioAsset(playlist_item, callback) {
             if (data.Item) {
                 console.log("audio asset exists");
                 addNumSlices(playlist_item, data.Item.numSlices, function () {
+                    if ((playlist_item.curr_index + 1) < data.Item.numSlices) {
+                        // Made an anomymous function to solve reliability issues of timeout
+                        // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
+                        (function (playlist_item) {
+                            getNextAudioAsset(playlist_item, function () {
+                                console.log("Finished fetch next item");
+                            });
+                        })(playlist_item);
+                    }
                     callback(data.Item);
                 });
             } else {
@@ -134,21 +153,6 @@ function getAudioAsset(playlist_item, callback) {
                                             if (err) console.log("ERROR", err, err.stack); // an error occurred
                                             // else console.log("Batch write successful, asset put in table, deleted from Polly queue");
                                             addNumSlices(playlist_item, batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item.numSlices, function () {
-                                                if ((playlist_item.curr_index + 1) < playlist_item.numSlices) {
-                                                    // Made an anomymous function to solve reliability issues of timeout
-                                                    // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
-                                                    (function (playlist_item) {
-                                                        setTimeout(function () {
-                                                            console.log("current playlist item: " + JSON.stringify(playlist_item));
-                                                            var next_playlist_item = playlist_item;
-                                                            ++next_playlist_item.curr_index;
-                                                            console.log("next playlist item: " + JSON.stringify(next_playlist_item));
-                                                            getAudioAsset(next_playlist_item, function () {
-                                                                console.log("Finished fetch next item");
-                                                            });
-                                                        }, 100);
-                                                    })(playlist_item);
-                                                }
                                                 callback(batchWriteParams.RequestItems[constants.audioAssetTableName][0].PutRequest.Item);
                                             });
                                         });

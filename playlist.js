@@ -4,6 +4,7 @@ const constants = require('./constants');
 const audioAssets = require('./audioAssets');
 const requests = require('./requests');
 const htmlToText = require('./htmlToText');
+const EventEmitter = require('events');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -34,7 +35,7 @@ function respond(article, index, callback) {
         } else {
             // console.log("UpdateItem succeeded: " + "\n" + JSON.stringify(data, undefined, 2));
             if (article.curr_index > 0) {
-                (function(article) {
+                (function (article) {
                     setTimeout(function () {
                         var last_article = article;
                         --last_article.curr_index;
@@ -47,13 +48,80 @@ function respond(article, index, callback) {
                         // FIXME: Introduces bug where the playback gets stuck on one audio asset, playing it on repeat
                         // TODO: what about in cases where multiple people are listening to the same article? A more extensive (and thought-out) solution may be needed to account for this.
 
-                        audioAssets.delete(last_article, function (deletedAsset) {
-                            console.log(`audio asset '${deletedAsset.key}' deleted`);
-                        });
+                        // FIXME: the first and last audio assets for each article aren't deleted
+                        // audioAssets.delete(last_article, function (deletedAsset) {
+                        //     console.log(`audio asset '${deletedAsset.key}' deleted`);
+                        // });
                     }, 3000);
-                })(article);    
+                })(article);
             }
             audioAssets.get(article, callback);
+        }
+    });
+}
+
+function clearOldAudioAssets(access_token, index, callback) {
+    let params = {
+        TableName: constants.playlistTableName,
+        KeyConditionExpression: "access_token = :t",
+        ExpressionAttributeValues: {
+            ":t": access_token
+        }
+    };
+    // console.log("playlist items query:", JSON.stringify(params));
+    // let self = this;
+    dynamodb.query(params, function (err, data) {
+        if (err) {
+            console.log(err, err.stack);
+        } else {
+            console.log("playlist items query result:", JSON.stringify(data));
+            var numAssetsToDelete = 0;
+            let emitter = new EventEmitter;
+            emitter.on('done', function (deletedAsset) {
+                deletedAssets.push(deletedAsset);
+                if (deletedAssets.length >= numAssetsToDelete) {
+                    callback(deletedAssets);
+                }
+            });
+            var deletedAssets = [];
+            data.Items.forEach(function (article) {
+                // let article = articles[key];
+                let curr_index = 0;
+                let article_index = article.order;
+                if ('curr_index' in article) {
+                    curr_index = article.curr_index;
+                }
+                numAssetsToDelete += curr_index;
+                for (let i = 0; i < curr_index - 1; ++i) {
+                    var asset_delete = article;
+                    asset_delete.curr_index = i;
+                    audioAssets.delete(asset_delete, function (deletedAsset) {
+                        emitter.emit('done', deletedAsset);
+                    });
+                }
+                if (article_index < index) {
+                    const params = {
+                        TableName: constants.playlistTableName,
+                        Key: {
+                            "access_token": article.access_token,
+                            "order": article_index
+                        },
+                        UpdateExpression: "set curr_index = :i",
+                        ExpressionAttributeValues: {
+                            ":i": 0
+                        },
+                        ReturnValues: "UPDATED_NEW"
+                    };
+                    // console.log("update playlist item query: " + JSON.stringify(params));
+                    dynamodb.update(params, function (err, data) {
+                        if (err) {
+                            console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
+                        } else {
+                            console.log('updated the table entry');
+                        }
+                    });
+                }
+            });
         }
     });
 }
@@ -205,3 +273,4 @@ function getNextAudioAsset(access_token, index, callback) {
     });
 }
 exports.getNextAudioAsset = getNextAudioAsset;
+exports.clearOldAudioAssets = clearOldAudioAssets;

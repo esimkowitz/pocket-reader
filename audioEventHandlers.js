@@ -2,6 +2,7 @@
 
 const Alexa = require('alexa-sdk');
 const constants = require('./constants');
+const audioAssets = require('./audioAssets');
 const playlist = require('./playlist');
 
 let AWS = require('aws-sdk');
@@ -36,6 +37,37 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         console.log("PlaybackFinished Request");
         this.attributes['playbackFinished'] = true;
         this.attributes['enqueuedToken'] = false;
+        // TODO: See if adding patch below fixes bug where first and last audio assets aren't deleted
+        (function (self) {
+            setImmediate(function () {
+                let access_token = self.event.context.System.user.accessToken;
+                let enqueueIndex = self.attributes['index'];
+                console.log("access_token: " + access_token + ", enqueueIndex: " + enqueueIndex);
+                playlist.clearOldAudioAssets(access_token, enqueueIndex, function (data) {
+                    console.log("audio assets cleared: " + JSON.stringify(data));
+                })
+                // let params = {
+                //     TableName: constants.playlistTableName,
+                //     KeyConditionExpression: "access_token = :t",
+                //     ExpressionAttributeValues: {
+                //         ":t": access_token
+                //     }
+                // };
+                // dynamodb.query(params, function (err, data) {
+                //     if (err) {
+                //         console.log(err, err.stack);
+                //     } else {
+                //         console.log("audio asset to be deleted: " + JSON.stringify(data));
+                //         let enqueueIndex = self.attributes['index'];
+                //         let article = data.Items[enqueueIndex];
+                //         audioAssets.delete(article, function (deletedAsset) {
+                //             console.log(`audio asset '${deletedAsset.key}' deleted`);
+                //         });
+                //     }
+                // });
+            });  
+        })(this);
+        
         this.emit(':saveState', true);
     },
     'PlaybackStopped': function () {
@@ -83,7 +115,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         let self = this;
         dynamodb.query(params, function (err, data) {
             if (err) {
-                console.log(err, err.stack);
+                console.log("error with playlist query", err, err.stack);
             } else {
                 let enqueueIndex = self.attributes['index'];
                 let article = data.Items[enqueueIndex];
