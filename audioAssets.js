@@ -53,6 +53,7 @@ function getNextAudioAsset(playlist_item, callback) {
 }
 
 function getAudioAsset(playlist_item, callback) {
+    // TODO: hash user access token and use as supplemental key
     let key = playlist_item.article_key;
     let index = playlist_item.curr_index;
     let params = {

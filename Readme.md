@@ -1,4 +1,4 @@
-# Pocket Reader
+# Article Reader
 
 _Read Pocket articles with Alexa_
 

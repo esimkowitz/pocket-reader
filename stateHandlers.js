@@ -4,6 +4,7 @@ const Alexa = require('alexa-sdk');
 const constants = require('./constants');
 const requests = require('./requests');
 const playlist = require('./playlist');
+const jsSHA = require('jssha');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -184,7 +185,10 @@ let stateHandlers = {
                                     let orderCount = 0;
                                     for (let i = 0; i < count; ++i) {
                                         let article = article_list[sort_id_list[String(i)]];
-                                        const key = article.resolved_id;
+                                        var SHA = new jsSHA('SHA-1', 'TEXT');
+                                        SHA.update(Math.random());
+                                        let random_hash = SHA.getHash('HEX')
+                                        const key = `${random_hash}-${article.resolved_id}`;
 
                                         batchWriteParams.RequestItems[constants.playlistTableName].push({
                                             PutRequest: {
