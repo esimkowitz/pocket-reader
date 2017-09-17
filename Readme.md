@@ -5,7 +5,7 @@ _Read Pocket articles with Alexa_
 ## TODO
 
 1. [ ] Update `playNext` and `playPrevious` actions to play next/previous article, rather than next/previous audio asset.
-1. [ ] Add blurb to beginning of each article to announce the title and author
+1. [x] Add blurb to beginning of each article to announce the title and author
 1. [x] Reduce the delay with loading new article segments (maybe cache them in the background?)
 1. [x] Figure out how long audio assets should be held onto before discarding
     - Should they be deleted immediately after use?
