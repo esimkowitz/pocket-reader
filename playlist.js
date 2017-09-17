@@ -37,17 +37,17 @@ function respond(article, index, callback) {
     });
 }
 
-function clearOldAudioAssets(access_token, index, callback) {
+function clearOldAudioAssets(access_token, index, callback, delete_all = false) {
     let params = {
         TableName: constants.playlistTableName,
-        KeyConditionExpression: "access_token = :t",
-        ExpressionAttributeValues: {
-            ":t": access_token
+        Key: {
+            access_token: access_token,
+            order: index
         }
     };
     // console.log("playlist items query:", JSON.stringify(params));
     // let self = this;
-    dynamodb.query(params, function (err, data) {
+    dynamodb.get(params, function (err, data) {
         if (err) {
             console.log(err, err.stack);
         } else {
@@ -61,44 +61,48 @@ function clearOldAudioAssets(access_token, index, callback) {
                 }
             });
             var deletedAssets = [];
-            data.Items.forEach(function (article) {
-                // let article = articles[key];
-                let curr_index = 0;
-                let article_index = article.order;
-                if ('curr_index' in article) {
-                    curr_index = article.curr_index;
-                }
-                numAssetsToDelete += curr_index;
-                for (let i = 0; i < curr_index - 1; ++i) {
-                    var asset_delete = article;
-                    asset_delete.curr_index = i;
-                    audioAssets.delete(asset_delete, function (deletedAsset) {
-                        emitter.emit('done', deletedAsset);
-                    });
-                }
-                if (article_index < index) {
-                    const params = {
-                        TableName: constants.playlistTableName,
-                        Key: {
-                            "access_token": article.access_token,
-                            "order": article_index
-                        },
-                        UpdateExpression: "set curr_index = :i",
-                        ExpressionAttributeValues: {
-                            ":i": 0
-                        },
-                        ReturnValues: "UPDATED_NEW"
-                    };
-                    // console.log("update playlist item query: " + JSON.stringify(params));
-                    dynamodb.update(params, function (err, data) {
-                        if (err) {
-                            console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
-                        } else {
-                            console.log('updated the table entry');
-                        }
-                    });
-                }
-            });
+            let article = data.Item;
+            // let article = articles[key];
+            let curr_index = 0;
+            let article_index = article.order;
+            if ('curr_index' in article) {
+                curr_index = article.curr_index;
+            }
+            let numSlices = 0;
+            if ('numSlices' in article) {
+                numSlices = article.numSlices;
+            }
+            let end_index = delete_all ? numSlices : (curr_index - 1);
+            numAssetsToDelete += end_index;
+            for (let i = 0; i < end_index; ++i) {
+                var asset_delete = article;
+                asset_delete.curr_index = i;
+                audioAssets.delete(asset_delete, function (deletedAsset) {
+                    emitter.emit('done', deletedAsset);
+                });
+            }
+            if (article_index < index) {
+                const params = {
+                    TableName: constants.playlistTableName,
+                    Key: {
+                        "access_token": article.access_token,
+                        "order": article_index
+                    },
+                    UpdateExpression: "set curr_index = :i",
+                    ExpressionAttributeValues: {
+                        ":i": 0
+                    },
+                    ReturnValues: "UPDATED_NEW"
+                };
+                // console.log("update playlist item query: " + JSON.stringify(params));
+                dynamodb.update(params, function (err, data) {
+                    if (err) {
+                        console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
+                    } else {
+                        console.log('updated the table entry');
+                    }
+                });
+            }
         }
     });
 }

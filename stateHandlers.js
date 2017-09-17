@@ -4,7 +4,7 @@ const Alexa = require('alexa-sdk');
 const constants = require('./constants');
 const requests = require('./requests');
 const playlist = require('./playlist');
-const jsSHA = require('jssha');
+const RandomString = require('./RandomString');
 
 let AWS = require('aws-sdk');
 AWS.config.update({
@@ -94,6 +94,16 @@ let stateHandlers = {
                     };
                     params.RequestItems[constants.playlistTableName] = [];
                     for (let i = 0; i < data.Count; ++i) {
+                        (function (data, i) {
+                            setImmediate(function () {
+                                let access_token = data.Items[i].access_token;
+                                let enqueueIndex = data.Items[i].order;
+                                console.log("access_token: " + access_token + ", enqueueIndex: " + enqueueIndex);
+                                playlist.clearOldAudioAssets(access_token, enqueueIndex, function (data) {
+                                    console.log("audio assets cleared: " + JSON.stringify(data));
+                                }, true);
+                            });
+                        })(data, i);
                         params.RequestItems[constants.playlistTableName].push({
                             DeleteRequest: {
                                 Key: {
@@ -186,12 +196,11 @@ let stateHandlers = {
                                     for (let i = 0; i < count; ++i) {
                                         let article = article_list[sort_id_list[String(i)]];
 
-                                        // Create a random SHA-1 hash string, allowing an article to be played back
-                                        // by multiple users at the same time without interference.
-                                        var SHA = new jsSHA('SHA-1', 'BYTES');
-                                        SHA.update(Math.random());
-                                        let random_hash = SHA.getHash('HEX');
-                                        const key = `${random_hash}-${article.resolved_id}`;
+                                        // Create a random string of characters to use as an additional key, 
+                                        // allowing an article to be played back by multiple users at the 
+                                        // same time without interference.
+                                        const random_string = RandomString.newString(constants.randomStringLength);
+                                        const key = `${random_string}-${article.resolved_id}`;
 
                                         batchWriteParams.RequestItems[constants.playlistTableName].push({
                                             PutRequest: {

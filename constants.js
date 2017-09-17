@@ -29,5 +29,7 @@ module.exports = Object.freeze({
         RESUME_DECISION_MODE: '_RESUME_DECISION_MODE'
     },
     audioAssetBucket: "pocket-reader-audio-files",
-    audioAssetFormat: 'mp3'
+    audioAssetFormat: 'mp3',
+
+    randomStringLength: 10
 });

@@ -16,7 +16,6 @@
     "dynamodb-doc": "^1.0.0",
     "i18next": "^3.4.1",
     "i18next-sprintf-postprocessor": "^0.2.2",
-    "jssha": "^2.3.1",
     "xmlhttprequest": "^1.8.0"
   },
   "devDependencies": {},

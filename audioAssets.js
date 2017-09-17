@@ -173,22 +173,25 @@ function deleteAudioAsset(playlist_item, callback) {
         Key: assetKey
     };
     s3.deleteObject(params, function (err, data) {
-        if (err) console.log(err, err.stack); // an error occurred
-        else {
-            let params = {
-                Key: {
-                    key: playlist_item.article_key,
-                    index: playlist_item.curr_index
-                },
-                TableName: constants.audioAssetTableName
+        let params = {
+            Key: {
+                key: playlist_item.article_key,
+                index: playlist_item.curr_index
+            },
+            TableName: constants.audioAssetTableName
+        }
+        if (err) {
+            console.log(err, err.stack); // an error occurred
+            params.TableName = constants.pollyQueueTableName;
+        }
+        dynamodb.delete(params, function (err, data) {
+            if (err) console.log(err, err.stack); // an error occurred
+            else {
+                callback({
+                    key: assetKey
+                });
             }
-            dynamodb.delete(params, function (err, data) {
-                if (err) console.log(err, err.stack); // an error occurred
-                else {
-                    callback({key: assetKey});
-                }
-            });
-        }; // successful response
+        });
     });
 }
 
