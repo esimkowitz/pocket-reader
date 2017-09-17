@@ -64,7 +64,10 @@ function clearOldAudioAssets(access_token, index, callback, delete_all = false) 
             let article = data.Item;
             // let article = articles[key];
             let curr_index = 0;
-            let article_index = article.order;
+            let article_index = 0;
+            if ('order' in article) {
+                article_index = article.order;
+            }
             if ('curr_index' in article) {
                 curr_index = article.curr_index;
             }

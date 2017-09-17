@@ -12,6 +12,6 @@ _Read Pocket articles with Alexa_
     - Should I try to incoorporate a smart caching scheme (probably not this one)?
 1. [ ] Figure out why the first audio asset is sometimes repeated at the start of an article's playback.
 1. [ ] Add support for lists and headers in the HTML parser, also authors.
-1. [ ] Implement a system to delete left-over Polly Queue table entries and audio assets when a playlist entry is deleted.
+1. [x] Implement a system to delete left-over Polly Queue table entries and audio assets when a playlist entry is deleted.
 1. [ ] Add ability to queue unspecified number of articles
     - i.e. play back all articles until told to stop
