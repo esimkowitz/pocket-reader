@@ -21,13 +21,16 @@ function respond(article, index, callback) {
             "access_token": article.access_token,
             "order": index
         },
-        UpdateExpression: "set curr_index = :i",
+        UpdateExpression: "set #I = :i",
+        ExpressionAttributeNames: {
+            "#I": "curr_index"
+        },
         ExpressionAttributeValues: {
             ":i": article.curr_index + 1
         },
         ReturnValues: "UPDATED_NEW"
     };
-
+    console.log("update playlist item query: " + JSON.stringify(params));
     dynamodb.update(params, function (err, data) {
         if (err) {
             console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
@@ -37,77 +40,63 @@ function respond(article, index, callback) {
     });
 }
 
-function clearOldAudioAssets(access_token, index, callback, delete_all = false) {
-    let params = {
-        TableName: constants.playlistTableName,
-        Key: {
-            access_token: access_token,
-            order: index
-        }
-    };
-    // console.log("playlist items query:", JSON.stringify(params));
-    // let self = this;
-    dynamodb.get(params, function (err, data) {
-        if (err) {
-            console.log(err, err.stack);
-        } else {
-            console.log("playlist items query result:", JSON.stringify(data));
-            var numAssetsToDelete = 0;
-            let emitter = new EventEmitter;
-            emitter.on('done', function (deletedAsset) {
-                deletedAssets.push(deletedAsset);
-                if (deletedAssets.length >= numAssetsToDelete) {
-                    callback(deletedAssets);
-                }
-            });
-            var deletedAssets = [];
-            let article = data.Item;
-            // let article = articles[key];
-            let curr_index = 0;
-            let article_index = 0;
-            if ('order' in article) {
-                article_index = article.order;
-            }
-            if ('curr_index' in article) {
-                curr_index = article.curr_index;
-            }
-            let numSlices = 0;
-            if ('numSlices' in article) {
-                numSlices = article.numSlices;
-            }
-            let end_index = delete_all ? numSlices : (curr_index - 1);
-            numAssetsToDelete += end_index;
-            for (let i = 0; i < end_index; ++i) {
-                var asset_delete = article;
-                asset_delete.curr_index = i;
-                audioAssets.delete(asset_delete, function (deletedAsset) {
-                    emitter.emit('done', deletedAsset);
-                });
-            }
-            if (article_index < index) {
-                const params = {
-                    TableName: constants.playlistTableName,
-                    Key: {
-                        "access_token": article.access_token,
-                        "order": article_index
-                    },
-                    UpdateExpression: "set curr_index = :i",
-                    ExpressionAttributeValues: {
-                        ":i": 0
-                    },
-                    ReturnValues: "UPDATED_NEW"
-                };
-                // console.log("update playlist item query: " + JSON.stringify(params));
-                dynamodb.update(params, function (err, data) {
-                    if (err) {
-                        console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
-                    } else {
-                        console.log('updated the table entry');
-                    }
-                });
-            }
+function clearOldAudioAssets(article, callback, delete_all = false) {
+    var numAssetsToDelete = 0;
+    let emitter = new EventEmitter;
+    emitter.on('done', function (deletedAsset) {
+        deletedAssets.push(deletedAsset);
+        if (deletedAssets.length >= numAssetsToDelete) {
+            callback(deletedAssets);
         }
     });
+    var deletedAssets = [];
+    let curr_index = 0;
+    let numSlices = 0;
+    if ('curr_index' in article) {
+        curr_index = article.curr_index;
+    }
+    if ('numSlices' in article) {
+        numSlices = article.numSlices;
+    }
+
+    let end_index = delete_all ? numSlices : (curr_index - 1);
+    numAssetsToDelete = end_index;
+    let deleteTableEntries = delete_all;
+    for (var i = 0; i < end_index; ++i) {
+        var asset_delete = article;
+        asset_delete.curr_index = i;
+        // console.log('asset to be deleted: ' + JSON.stringify(asset_delete));
+        (function (asset_delete, deleteTableEntries) {
+            setImmediate(function () {
+                audioAssets.delete(asset_delete, function (deletedAsset) {
+                    console.log('asset deleted: ' + JSON.stringify(deletedAsset));
+                    emitter.emit('done', deletedAsset);
+                }, deleteTableEntries);
+            });
+        })(asset_delete, deleteTableEntries);
+    }
+    // callback({});
+    // if (delete_all)
+    // const params = {
+    //     TableName: constants.playlistTableName,
+    //     Key: {
+    //         "access_token": article.access_token,
+    //         "order": article_index
+    //     },
+    //     UpdateExpression: "set curr_index = :i",
+    //     ExpressionAttributeValues: {
+    //         ":i": 0
+    //     },
+    //     ReturnValues: "UPDATED_NEW"
+    // };
+    // // console.log("update playlist item query: " + JSON.stringify(params));
+    // dynamodb.update(params, function (err, data) {
+    //     if (err) {
+    //         console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
+    //     } else {
+    //         console.log('updated the table entry');
+    //     }
+    // });
 }
 
 function getNextAudioAsset(access_token, index, callback) {
@@ -148,106 +137,83 @@ function getNextAudioAsset(access_token, index, callback) {
                         respond(article, index, callback);
                     } else {
                         console.log("Asset doesn't exist");
-                        let params = {
-                            TableName: constants.pollyQueueTableName,
-                            KeyConditionExpression: "(#article_key = :article) AND (#index = :curr_index)",
-                            ExpressionAttributeNames: {
-                                "#article_key": "key",
-                                "#index": "index"
-                            },
-                            ExpressionAttributeValues: {
-                                ":article": article.article_key,
-                                ":curr_index": article.curr_index
-                            },
-                            Select: "COUNT"
+                        // Use Pocket's Article View API to obtain the parsed text of the articles.
+                        let request_data = {
+                            'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
+                            'url': encodeURIComponent(article.article_url),
+                            'images': '0',
+                            'videos': '0',
+                            'refresh': '0',
+                            'output': 'json'
                         };
-                        // console.log("polly queue query:", JSON.stringify(params));
-                        dynamodb.query(params, function (err, data) {
-                            // console.log("audio asset query response:", JSON.stringify(data));
+                        let url = 'https://text.getpocket.com/v3/text';
+                        requests.makeRequest(url, request_data, function (err, res) {
                             if (!err) {
-                                if (data.Count > 0) {
-                                    respond(article, index, callback);
-                                } else {
-                                    // Use Pocket's Article View API to obtain the parsed text of the articles.
-                                    let request_data = {
-                                        'consumer_key': String(process.env.POCKET_CONSUMER_KEY),
-                                        'url': encodeURIComponent(article.article_url),
-                                        'images': '0',
-                                        'videos': '0',
-                                        'refresh': '0',
-                                        'output': 'json'
-                                    };
-                                    let url = 'https://text.getpocket.com/v3/text';
-                                    requests.makeRequest(url, request_data, function (err, res) {
-                                        if (!err) {
-                                            // console.log("Article View response:", JSON.stringify(res));
-                                            let response_texts = htmlToText.convert(res.article);
+                                // console.log("Article View response:", JSON.stringify(res));
+                                let response_texts = htmlToText.convert(res.article);
 
-                                            // Push the title and the date the article was published to the front of the response_texts array so
-                                            // that they'll be announced ahead of the article playing.
+                                // Push the title and the date the article was published to the front of the response_texts array so
+                                // that they'll be announced ahead of the article playing.
 
-                                            // FIXME: Article title is sometimes twice before the date is played, figure out why
-                                            var datePublished = new Date(res.datePublished);
-                                            response_texts.unshift(datePublished.toDateString());
-                                            response_texts.unshift(res.title);
-                                            console.log("article authors: " + JSON.stringify(res.authors));
+                                // FIXME: Article title is sometimes twice before the date is played, figure out why
+                                var datePublished = new Date(res.datePublished);
+                                response_texts.unshift(datePublished.toDateString());
+                                response_texts.unshift(res.title);
+                                console.log("article authors: " + JSON.stringify(res.authors));
 
-                                            let batchWriteParams = {
-                                                RequestItems: {}
-                                            };
-                                            batchWriteParams.RequestItems[constants.pollyQueueTableName] = [];
-                                            response_texts.forEach(function (response_text, index, response_texts) {
-                                                batchWriteParams.RequestItems[constants.pollyQueueTableName].push({
-                                                    PutRequest: {
-                                                        Item: {
-                                                            key: article.article_key,
-                                                            index: index,
-                                                            numSlices: response_texts.length,
-                                                            title: res.title,
-                                                            text: response_text
-                                                        }
-                                                    }
-                                                });
-                                                if (index + 1 >= response_texts.length) {
-                                                    // console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
-                                                    let arrays = [];
-                                                    const size = 25;
-                                                    // console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
-                                                    Object.keys(batchWriteParams.RequestItems).forEach(function (key, index, keys) {
-                                                        console.log(key, index, keys.length);
-                                                        let a = batchWriteParams.RequestItems[key];
-                                                        while (a.length > 0) {
-                                                            let temp = {
-                                                                RequestItems: {}
-                                                            };
-                                                            temp.RequestItems[key] = a.splice(0, size);
-                                                            arrays.push(temp);
-                                                        }
-                                                        if (index + 1 >= keys.length) {
-                                                            // console.log("split batchWrite params:", JSON.stringify(arrays));
-                                                            arrays.forEach(function (params, index, paramsArray) {
-                                                                dynamodb.batchWrite(params, function (err, data) {
-                                                                    if (err) {
-                                                                        console.log('ERROR: Dynamo failed: ' + err);
-                                                                    } else {
-                                                                        // console.log('put polly queue batchWrite success');
-                                                                        if (index + 1 >= paramsArray.length)
-                                                                            respond(article, index, callback);
-                                                                        // audioAssets.get(article.article_key, article.article_index, callback);
-                                                                    }
-                                                                });
-                                                            });
+                                let batchWriteParams = {
+                                    RequestItems: {}
+                                };
+                                console.log("response_texts: " + JSON.stringify(response_texts));
+                                batchWriteParams.RequestItems[constants.audioAssetTableName] = [];
+                                response_texts.forEach(function (response_text, responseIndex, response_texts) {
+                                    batchWriteParams.RequestItems[constants.audioAssetTableName].push({
+                                        PutRequest: {
+                                            Item: {
+                                                key: article.article_key,
+                                                index: responseIndex,
+                                                numSlices: response_texts.length,
+                                                title: res.title,
+                                                text: response_text,
+                                                downloaded: false
+                                            }
+                                        }
+                                    });
+                                    if (responseIndex + 1 >= response_texts.length) {
+                                        // console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
+                                        let arrays = [];
+                                        const size = 25;
+                                        // console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
+                                        Object.keys(batchWriteParams.RequestItems).forEach(function (key, keysIndex, keys) {
+                                            console.log(key, keysIndex, keys.length);
+                                            let a = batchWriteParams.RequestItems[key];
+                                            while (a.length > 0) {
+                                                let temp = {
+                                                    RequestItems: {}
+                                                };
+                                                temp.RequestItems[key] = a.splice(0, size);
+                                                arrays.push(temp);
+                                            }
+                                            if (keysIndex + 1 >= keys.length) {
+                                                // console.log("split batchWrite params:", JSON.stringify(arrays));
+                                                arrays.forEach(function (params, paramsIndex, paramsArray) {
+                                                    dynamodb.batchWrite(params, function (err, data) {
+                                                        if (err) {
+                                                            console.log('ERROR: Dynamo failed: ' + err);
+                                                        } else {
+                                                            // console.log('put polly queue batchWrite success');
+                                                            if (paramsIndex + 1 >= paramsArray.length)
+                                                                respond(article, index, callback);
+                                                            // audioAssets.get(article.article_key, article.article_index, callback);
                                                         }
                                                     });
-                                                }
-                                            });
-                                        }
-                                    }, "FORM");
-                                }
-                            } else {
-                                console.log(err, err.stack);
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
                             }
-                        });
+                        }, "FORM");
                     }
                 } else {
                     console.log(err, err.stack);

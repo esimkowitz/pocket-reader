@@ -92,14 +92,15 @@ let stateHandlers = {
                     let params = {
                         RequestItems: {}
                     };
+                    console.log("remaining playlist entries: " + JSON.stringify(data));
                     params.RequestItems[constants.playlistTableName] = [];
                     for (let i = 0; i < data.Count; ++i) {
                         (function (data, i) {
                             setImmediate(function () {
-                                let access_token = data.Items[i].access_token;
-                                let enqueueIndex = data.Items[i].order;
-                                console.log("access_token: " + access_token + ", enqueueIndex: " + enqueueIndex);
-                                playlist.clearOldAudioAssets(access_token, enqueueIndex, function (data) {
+                                const article_to_delete = data.Items[i];
+                                console.log("article to delete: " + JSON.stringify(article_to_delete));
+                                // console.log("access_token: " + access_token + ", enqueueIndex: " + enqueueIndex);
+                                playlist.clearOldAudioAssets(article_to_delete, function (data) {
                                     console.log("audio assets cleared: " + JSON.stringify(data));
                                 }, true);
                             });
