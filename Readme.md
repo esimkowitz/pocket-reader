@@ -16,8 +16,9 @@ _Read Pocket articles with Alexa_
 1. [ ] Streamline the process for deleting old assets
     - Maybe keep a list of currently-downloaded assets in the playlist object so fewer repeat queries need to be done
     - Or combine all the audio asset objects into one list object with an index marker
-1. [ ] Streamline the cleanup phase so that old audio assets are reliably deleted
+1. [x] Streamline the cleanup phase so that old audio assets are reliably deleted
     - Maybe keep track of when an asset was last played and delete it when it's been idle for too long
+1. [ ] Simplify the tracking of playlists, current index within an article, etc. by using the this.attributes object instead of a separate table.
 
 ## FIXME
 
