@@ -14,6 +14,7 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
     region: 'us-east-1'
 });
 
+// TODO: Move the curr_index update to the PlaybackStarted handler in audioEventHandlers.js
 function respond(article, index, callback) {
     let params = {
         TableName: constants.playlistTableName,
@@ -43,60 +44,75 @@ function respond(article, index, callback) {
 function clearOldAudioAssets(article, callback, delete_all = false) {
     var numAssetsToDelete = 0;
     let emitter = new EventEmitter;
+    var deletedAssets = [];
+
     emitter.on('done', function (deletedAsset) {
         deletedAssets.push(deletedAsset);
         if (deletedAssets.length >= numAssetsToDelete) {
             callback(deletedAssets);
         }
     });
-    var deletedAssets = [];
     let curr_index = 0;
-    let numSlices = 0;
     if ('curr_index' in article) {
         curr_index = article.curr_index;
     }
-    if ('numSlices' in article) {
-        numSlices = article.numSlices;
+    let dynamoParams = {};
+    if (delete_all) {
+        // if we are deleting all the entries, we want the full list of audioAssets
+        dynamoParams = {
+            TableName: constants.audioAssetTableName,
+            KeyConditionExpression: "#primaryIndex = :p",
+            ExpressionAttributeNames: {
+                "#primaryIndex": "key"
+            },
+            ExpressionAttributeValues: {
+                ":p": article.article_key
+            }
+        };
+    } else {
+        // if we are not deleting all the entries, we only want a list of the downloaded audioAssets that
+        // come before the current asset.
+        dynamoParams = {
+            TableName: constants.audioAssetTableName,
+            KeyConditionExpression: "#primaryIndex = :p AND #secondaryIndex < :s",
+            FilterExpression: "#filterIndex = :f",
+            ExpressionAttributeNames: {
+                "#primaryIndex": "key",
+                "#secondaryIndex": "index",
+                "#filterIndex": "downloaded"
+            },
+            ExpressionAttributeValues: {
+                ":p": article.article_key,
+                ":f": true,
+                ":s": curr_index
+            }
+        };
     }
+    // console.log("assets to delete query: " + JSON.stringify(dynamoParams));
 
-    let end_index = delete_all ? numSlices : (curr_index - 1);
-    numAssetsToDelete = end_index;
-    let deleteTableEntries = delete_all;
-    for (var i = 0; i < end_index; ++i) {
-        var asset_delete = article;
-        asset_delete.curr_index = i;
-        // console.log('asset to be deleted: ' + JSON.stringify(asset_delete));
-        (function (asset_delete, deleteTableEntries) {
-            setImmediate(function () {
-                audioAssets.delete(asset_delete, function (deletedAsset) {
-                    console.log('asset deleted: ' + JSON.stringify(deletedAsset));
-                    emitter.emit('done', deletedAsset);
-                }, deleteTableEntries);
-            });
-        })(asset_delete, deleteTableEntries);
-    }
-    // callback({});
-    // if (delete_all)
-    // const params = {
-    //     TableName: constants.playlistTableName,
-    //     Key: {
-    //         "access_token": article.access_token,
-    //         "order": article_index
-    //     },
-    //     UpdateExpression: "set curr_index = :i",
-    //     ExpressionAttributeValues: {
-    //         ":i": 0
-    //     },
-    //     ReturnValues: "UPDATED_NEW"
-    // };
-    // // console.log("update playlist item query: " + JSON.stringify(params));
-    // dynamodb.update(params, function (err, data) {
-    //     if (err) {
-    //         console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
-    //     } else {
-    //         console.log('updated the table entry');
-    //     }
-    // });
+    // Query DynamoDB using the params from above, call audioAssets.delete to delete the asset and/or its table entry
+    // We only delete the table entry if we're deleting all the entries.
+    dynamodb.query(dynamoParams, function (err, data) {
+        if (err) console.log("DynamoDB error: " + err.stack);
+        else {
+            console.log("reading assets to delete: " + JSON.stringify(data));
+            numAssetsToDelete = data.Count;
+
+            let deleteTableEntries = delete_all;
+
+            for (let item in data.Items) {
+                (function (asset_delete, deleteTableEntries) {
+                    setImmediate(function () {
+                        let needToDelete = asset_delete.downloaded;
+                        audioAssets.delete(asset_delete, needToDelete, function (deletedAsset) {
+                            console.log('asset deleted: ' + JSON.stringify(deletedAsset));
+                            emitter.emit('done', deletedAsset);
+                        }, deleteTableEntries);
+                    });
+                })(data.Items[item], deleteTableEntries);
+            }
+        }
+    });
 }
 
 function getNextAudioAsset(access_token, index, callback) {

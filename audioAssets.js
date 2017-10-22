@@ -13,7 +13,7 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
 // If numSlices is not a property of the playlist table entry, add it for quicker/easier
 // querying in the future.
 function addNumSlices(playlist_item, numSlices, callback) {
-    if (!playlist_item.hasOwnProperty("numSlices")) {
+    if (!("numSlices" in playlist_item)) {
         let params = {
             TableName: constants.playlistTableName,
             Key: {
@@ -120,7 +120,7 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                                     ExpressionAttributeValues: {
                                         ":u": url,
                                         ":d": true
-                                    }, 
+                                    },
                                     Key: {
                                         key: key,
                                         index: index
@@ -155,74 +155,64 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
     });
 }
 
-function deleteAudioAsset(playlist_item, callback, deleteTableEntry = false) {
+function deleteAudioAsset(playlist_item, deleteAsset, callback, deleteTableEntry = false) {
     let s3 = new AWS.S3();
-    let key = playlist_item.article_key;
-    let index = playlist_item.curr_index;
-    let params = {
+    const key = playlist_item.key;
+    const index = playlist_item.index;
+    // console.log("item to delete: " + JSON.stringify(playlist_item));
+    const dynamo_params = {
         TableName: constants.audioAssetTableName,
         Key: {
             key: key,
             index: index
         }
     };
-    // console.log("get audio asset query:", JSON.stringify(params));
-    dynamodb.get(params, function (err, data) {
-        if (err) {
-            console.log(err, err.stack);
-        } else {
-            console.log("get audio asset result:", JSON.stringify(data));
-            if (data.Item) {
-                let audio_asset = data.Item;
-                if (audio_asset.downloaded) {
-                    let assetKey = `${key}-${index}.${constants.audioAssetFormat}`;
-                    let params = {
-                        Bucket: constants.audioAssetBucket,
-                        Key: assetKey
-                    };
-                    s3.deleteObject(params, function (err, data) {
-                        if (err) {
-                            console.log(err, err.stack); // an error occurred
-                        }
-                        let params = {
-                            ExpressionAttributeValues: {
-                                ":d": false
-                            },
-                            ExpressionAttributeNames: {
-                                "#D": "downloaded"
-                            },
-                            Key: {
-                                key: key,
-                                index: index
-                            },
-                            UpdateExpression: "SET #D = :d",
-                            TableName: constants.audioAssetTableName
-                        }
-                        dynamodb.update(params, function (err) {
-                            if (err) console.log("ERROR", err, err.stack); // an error occurred
-                        });
-                    });
-                }
-                if (deleteTableEntry) {
-                    let params = {
+
+    const assetKey = `${key}-${index}.${constants.audioAssetFormat}`;
+    const s3_params = {
+        Bucket: constants.audioAssetBucket,
+        Key: assetKey
+    };
+    if (deleteAsset) {
+        s3.deleteObject(s3_params, function (err, data) {
+            if (err) {
+                console.log("s3 delete object error:", err, err.stack); // an error occurred
+                // callback({});
+            } else {
+                console.log("s3 object deleted");
+                if (!deleteTableEntry) {
+                    const dynamo_update_params = {
+                        ExpressionAttributeValues: {
+                            ":d": false
+                        },
+                        ExpressionAttributeNames: {
+                            "#D": "downloaded"
+                        },
                         Key: {
                             key: key,
                             index: index
                         },
+                        UpdateExpression: "SET #D = :d",
                         TableName: constants.audioAssetTableName
                     };
-                    dynamodb.delete(params, function (err, data) {
-                        if (err) console.log(err, err.stack); // an error occurred
-                        else {
-                            callback(audio_asset);
-                        }
+                    dynamodb.update(dynamo_update_params, function (err) {
+                        if (err) console.log("DynamoDB update item error:", err, err.stack); // an error occurred
                     });
-                } else {
-                    callback(audio_asset);
                 }
             }
-        }
-    });
+        });
+    }
+    if (deleteTableEntry) {
+        // console.log("dynamobb delete item params: " + JSON.stringify(dynamo_params));
+        dynamodb.delete(dynamo_params, function (err, data) {
+            if (err) console.log("DynamoDB delete item error:", err, err.stack); // an error occurred
+            else {
+                callback(playlist_item);
+            }
+        });
+    } else {
+        callback(playlist_item);
+    }
 }
 
 exports.get = getAudioAsset;
