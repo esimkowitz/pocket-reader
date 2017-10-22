@@ -18,6 +18,7 @@ _Read Pocket articles with Alexa_
     - Or combine all the audio asset objects into one list object with an index marker
 1. [ ] Streamline the cleanup phase so that old audio assets are reliably deleted
     - Maybe keep track of when an asset was last played and delete it when it's been idle for too long
+1. [ ] Try implementing an automated deploy pipeline for the skill by following [this tutorial](https://stelligent.com/2017/07/25/use-aws-codepipeline-to-deploy-amazon-alexa-skill/).
 
 ## FIXME
 
