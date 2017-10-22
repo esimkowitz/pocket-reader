@@ -13,7 +13,7 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
 // If numSlices is not a property of the playlist table entry, add it for quicker/easier
 // querying in the future.
 function addNumSlices(playlist_item, numSlices, callback) {
-    if (!playlist_item.hasOwnProperty("numSlices")) {
+    if (!("numSlices" in playlist_item)) {
         let params = {
             TableName: constants.playlistTableName,
             Key: {

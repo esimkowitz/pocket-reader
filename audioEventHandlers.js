@@ -22,7 +22,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          */
         console.log("PlaybackStarted Request");
         this.attributes['token'] = getToken.call(this);
-        this.attributes['index'] = getIndex.call(this);
+        this.attributes['index'] = this.attributes['nextPlaylistIndex'];
         this.attributes['currArticleIndex'] = 'nextArticleIndex' in this.attributes ? this.attributes['nextArticleIndex'] : 0;
 
         this.attributes['playbackFinished'] = false;
@@ -188,6 +188,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                 // Setting attributes to indicate item is enqueued.
                 self.attributes['enqueuedToken'] = `${self.attributes['playOrder'][enqueueIndex]}-${article.curr_index}`;
                 self.attributes['nextArticleIndex'] = article.curr_index;
+                self.attributes['nextPlaylistIndex'] = enqueueIndex;
 
                 let enqueueToken = self.attributes['enqueuedToken'];
                 const playBehavior = 'ENQUEUE';
