@@ -18,7 +18,7 @@ function addNumSlices(playlist_item, numSlices, callback) {
             TableName: constants.playlistTableName,
             Key: {
                 "access_token": playlist_item.access_token,
-                "order": playlist_item.curr_index
+                "order": playlist_item.order
             },
             UpdateExpression: "set numSlices = :s",
             ExpressionAttributeValues: {
@@ -70,7 +70,8 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                 let audio_asset = data.Item;
                 if (audio_asset.downloaded) {
                     console.log("audio asset exists");
-                    addNumSlices(playlist_item, audio_asset.numSlices, function () {
+                    
+                    //addNumSlices(playlist_item, audio_asset.numSlices, function () {
                         if (((index + 1) < audio_asset.numSlices) && getAnother) {
                             // Made an anomymous function to solve reliability issues of timeout
                             // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
@@ -81,7 +82,7 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                             })(playlist_item);
                         }
                         callback(audio_asset);
-                    });
+                   // });
                 } else {
                     const output_format = constants.audioAssetFormat;
                     let params = {
@@ -133,7 +134,7 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                                     audio_asset.url = url;
                                     audio_asset.downloaded = true;
                                     // else console.log("Batch write successful, asset put in table, deleted from Polly queue");
-                                    addNumSlices(playlist_item, audio_asset.numSlices, function () {
+                                    //addNumSlices(playlist_item, audio_asset.numSlices, function () {
                                         if (((index + 1) < audio_asset.numSlices) && getAnother) {
                                             // Made an anomymous function to solve reliability issues of timeout
                                             // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
@@ -144,7 +145,7 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                                             })(playlist_item);
                                         }
                                         callback(audio_asset);
-                                    });
+                                   // });
                                 });
                             });
                         }

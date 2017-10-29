@@ -19,7 +19,7 @@ _Read Pocket articles with Alexa_
 1. [x] Streamline the cleanup phase so that old audio assets are reliably deleted
     - Maybe keep track of when an asset was last played and delete it when it's been idle for too long
 1. [ ] Try implementing an automated deploy pipeline for the skill by following [this tutorial](https://stelligent.com/2017/07/25/use-aws-codepipeline-to-deploy-amazon-alexa-skill/).
-1. [ ] Simplify the tracking of playlists, current index within an article, etc. by using the `this.attributes` object instead of a separate table.
+1. [x] Simplify the tracking of playlists, current index within an article, etc. by using the `this.attributes` object instead of a separate table.
 1. [ ] Look at [bespoken.io](https://bespoken.io/) as an option for easier skill development
 
 ## FIXME

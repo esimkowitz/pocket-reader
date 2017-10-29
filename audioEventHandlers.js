@@ -39,10 +39,11 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         console.log("PlaybackFinished Request");
         this.attributes['playbackFinished'] = true;
         this.attributes['enqueuedToken'] = false;
-        let access_token = this.event.context.System.user.accessToken;
+        // let access_token = this.event.context.System.user.accessToken;
 
         this.attributes['token'] = getToken.call(this);
         this.attributes['index'] = getIndex.call(this);
+        /*
         let enqueueIndex = this.attributes['index'];
         let curr_index = this.attributes['currArticleIndex'];
         console.log("this.attributes:", JSON.stringify(this.attributes));
@@ -80,10 +81,10 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                         });
                     });
                 })(item_to_delete);
-            }
+            }*/
 
-            self.emit(':saveState', true);
-        });
+        self.emit(':saveState', true);
+        //});
     },
     'PlaybackStopped': function () {
         /*
@@ -94,6 +95,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         console.log("PlaybackStopped Request");
         this.attributes['token'] = getToken.call(this);
         this.attributes['index'] = getIndex.call(this);
+        /*
         let access_token = this.event.context.System.user.accessToken;
         let enqueueIndex = this.attributes['index'];
 
@@ -130,7 +132,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                     });
                 })(data);
             }
-        });
+        });*/
         this.attributes['offsetInMilliseconds'] = getOffsetInMilliseconds.call(this);
         this.emit(':saveState', true);
     },
@@ -155,61 +157,63 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
             return this.context.succeed(true);
         }
         // Checking if  there are any items to be enqueued.
-        let access_token = this.event.context.System.user.accessToken;
-        let params = {
-            TableName: constants.playlistTableName,
-            KeyConditionExpression: "access_token = :t",
-            ExpressionAttributeValues: {
-                ":t": access_token
-            }
-        };
+        // let access_token = this.event.context.System.user.accessToken;
+        // let params = {
+        //     TableName: constants.playlistTableName,
+        //     KeyConditionExpression: "access_token = :t",
+        //     ExpressionAttributeValues: {
+        //         ":t": access_token
+        //     }
+        // };
         // console.log("playlist numItems query:", JSON.stringify(params));
         let self = this;
-        dynamodb.query(params, function (err, data) {
-            if (err) {
-                console.log("error with playlist query", err, err.stack);
+        // dynamodb.query(params, function (err, data) {
+        //     if (err) {
+        //         console.log("error with playlist query", err, err.stack);
+        //     } else {
+        let enqueueIndex = self.attributes['index'];
+        let article = self.attributes['playlist'][enqueueIndex];
+        console.log("Current article: " + JSON.stringify(article));
+        if (article.curr_index >= article.numSlices) {
+            enqueueIndex += 1;
+        }
+        console.log("enqueueIndex", enqueueIndex, "data.Count", self.attributes['playlist'].length);
+        if (enqueueIndex >= self.attributes['playlist'].length) {
+            if (self.attributes['loop']) {
+                // Enqueueing the first item since looping is enabled.
+                enqueueIndex = 0;
             } else {
-                let enqueueIndex = self.attributes['index'];
-                let article = data.Items[enqueueIndex];
-                console.log("Current article: " + JSON.stringify(article));
-                if (article.curr_index >= article.numSlices) {
-                    enqueueIndex += 1;
-                }
-                console.log("enqueueIndex", enqueueIndex, "data.Count", data.Count);
-                if (enqueueIndex >= data.Count) {
-                    if (self.attributes['loop']) {
-                        // Enqueueing the first item since looping is enabled.
-                        enqueueIndex = 0;
-                    } else {
-                        // Nothing to enqueue since reached end of the list and looping is disabled.
-                        return self.context.succeed(true);
-                    }
-                }
-                // Setting attributes to indicate item is enqueued.
-                self.attributes['enqueuedToken'] = `${self.attributes['playOrder'][enqueueIndex]}-${article.curr_index}`;
-                self.attributes['nextArticleIndex'] = article.curr_index;
-                self.attributes['nextPlaylistIndex'] = enqueueIndex;
-
-                let enqueueToken = self.attributes['enqueuedToken'];
-                const playBehavior = 'ENQUEUE';
-                playlist.getNextAudioAsset(access_token, self.attributes['playOrder'][enqueueIndex], function (audioAsset) {
-                    console.log("audioAsset", JSON.stringify(audioAsset));
-                    let expectedPreviousToken = self.attributes['token'];
-                    let offsetInMilliseconds = 0;
-
-                    self.response.audioPlayerPlay(playBehavior, audioAsset.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
-                    console.log("response:", JSON.stringify(self.response));
-                    self.emit(':responseReady');
-                });
+                // Nothing to enqueue since reached end of the list and looping is disabled.
+                return self.context.succeed(true);
             }
+        }
+        // Setting attributes to indicate item is enqueued.
+        self.attributes['enqueuedToken'] = `${self.attributes['playOrder'][enqueueIndex]}-${article.curr_index}`;
+        self.attributes['nextArticleIndex'] = article.curr_index;
+        self.attributes['nextPlaylistIndex'] = enqueueIndex;
+
+        let enqueueToken = self.attributes['enqueuedToken'];
+        const playBehavior = 'ENQUEUE';
+        playlist.getNextAudioAsset(self.attributes['playlist'][enqueueIndex], function (audioAsset) {
+            self.attributes['playlist'][enqueueIndex].curr_index++;
+            console.log("audioAsset", JSON.stringify(audioAsset));
+            let expectedPreviousToken = self.attributes['token'];
+            let offsetInMilliseconds = 0;
+
+            self.response.audioPlayerPlay(playBehavior, audioAsset.url, enqueueToken, expectedPreviousToken, offsetInMilliseconds);
+            console.log("response:", JSON.stringify(self.response));
+            self.emit(':responseReady');
         });
+        //     }
+        // });
     },
     'PlaybackFailed': function () {
         //  AudioPlayer.PlaybackNearlyFinished Directive received. Logging the error.
         console.log("Playback Failed : %j", this.event.request.error);
+        /*
         let access_token = this.event.context.System.user.accessToken;
         let enqueueIndex = this.attributes['index'];
-
+        
         let params = {
             TableName: constants.playlistTableName,
             Key: {
@@ -243,7 +247,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
                     });
                 })(data);
             }
-        });
+        });*/
         this.context.succeed(true);
     }
 });

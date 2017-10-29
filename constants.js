@@ -31,5 +31,6 @@ module.exports = Object.freeze({
     audioAssetBucket: "pocket-reader-audio-files",
     audioAssetFormat: 'mp3',
 
-    randomStringLength: 10
+    randomStringLength: 10,
+    audioAssetExpireTime: 24 * 60 * 60 * 1000
 });

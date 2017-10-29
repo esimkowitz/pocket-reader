@@ -64,6 +64,7 @@ let stateHandlers = {
         },
         'FetchArticle': function () {
             let access_token = this.event.session.user.accessToken;
+            console.log("FetchArticle Request");
 
             // If the access_token isn't set, the user must link their Pocket account to Alexa's services.
             if (access_token === undefined) {
@@ -73,185 +74,101 @@ let stateHandlers = {
                 return;
 
             }
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "#token = :access_token",
-                ExpressionAttributeNames: {
-                    "#token": "access_token"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token
-                }
+
+            this.attributes['playlist'] = [];
+
+            let slots = this.event.request.intent.slots;
+
+            let fetch_data = {
+                'qualifier': 'newest',
+                'number': 1
             };
-            // console.log("playlist entry query:", params);
             let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    let params = {
-                        RequestItems: {}
-                    };
-                    console.log("remaining playlist entries: " + JSON.stringify(data));
-                    params.RequestItems[constants.playlistTableName] = [];
-                    for (let i = 0; i < data.Count; ++i) {
-                        (function (data, i) {
-                            setImmediate(function () {
-                                const article_to_delete = data.Items[i];
-                                console.log("article to delete: " + JSON.stringify(article_to_delete));
-                                // console.log("access_token: " + access_token + ", enqueueIndex: " + enqueueIndex);
-                                playlist.clearOldAudioAssets(article_to_delete, function (data) {
-                                    console.log("audio assets cleared: " + JSON.stringify(data));
-                                }, true);
-                            });
-                        })(data, i);
-                        params.RequestItems[constants.playlistTableName].push({
-                            DeleteRequest: {
-                                Key: {
-                                    "access_token": data.Items[i].access_token,
-                                    "order": data.Items[i].order
+
+            if (slots) {
+                for (let i in slots) {
+                    //Check if there is a value in a given slot
+                    switch (slots[i].name) {
+                        case 'Qualifier': // Obtain the resolved qualifier (either 'oldest' or 'newest')
+                            {
+                                if (slots[i].resolutions) {
+                                    let resolutions = slots[i].resolutions.resolutionsPerAuthority;
+                                    if (resolutions.length > 0) {
+                                        if (resolutions[0].values.length > 0) {
+                                            fetch_data['qualifier'] = resolutions[0].values[0].value.name;
+                                        }
+                                    }
                                 }
+                                break;
                             }
-                        });
+                        case 'Number': // Obtain the number of articles desired
+                            {
+                                {
+                                    fetch_data['number'] = Number(slots[i].value ? slots[i].value : 1);
+                                }
+                                break;
+                            }
+                        default:
+                            {
+                                break;
+                            }
                     }
-                    console.log("delete playlist entries batchWrite:", JSON.stringify(params));
-                    dynamodb.batchWrite(params, function (err, data) {
-                        if (err) {
-                            console.log('ERROR: unable to delete playlist entries: ' + err);
-                        } else {
-                            // console.log('Playlist entries deleted');
-                        }
-                        let slots = self.event.request.intent.slots;
 
-                        let fetch_data = {
-                            'qualifier': 'newest',
-                            'number': 1
-                        };
-
-                        if (slots) {
-                            for (let i in slots) {
-                                //Check if there is a value in a given slot
-                                switch (slots[i].name) {
-                                    case 'Qualifier': // Obtain the resolved qualifier (either 'oldest' or 'newest')
-                                        {
-                                            if (slots[i].resolutions) {
-                                                let resolutions = slots[i].resolutions.resolutionsPerAuthority;
-                                                if (resolutions.length > 0) {
-                                                    if (resolutions[0].values.length > 0) {
-                                                        fetch_data['qualifier'] = resolutions[0].values[0].value.name;
-                                                    }
-                                                }
-                                            }
-                                            break;
-                                        }
-                                    case 'Number': // Obtain the number of articles desired
-                                        {
-                                            {
-                                                fetch_data['number'] = Number(slots[i].value ? slots[i].value : 1);
-                                            }
-                                            break;
-                                        }
-                                    default:
-                                        {
-                                            break;
-                                        }
-                                }
-
-                            }
-
-                            // Retrieve the n newest|oldest articles using Pocket's Retrieve API
-                            let request_data = {
-                                "consumer_key": process.env.POCKET_CONSUMER_KEY,
-                                "access_token": access_token,
-                                "count": fetch_data['number'],
-                                "detailType": "simple",
-                                "sort": fetch_data['qualifier'],
-                                "contentType": "article"
-                            };
-                            let url = 'https://getpocket.com/v3/get';
-                            requests.makeRequest(url, request_data, function (err, res) {
-                                let article_list = {},
-                                    sort_id_list = {};
-                                let count = 0;
-                                if (!err) {
-                                    if (res.status && res.complete) {
-                                        article_list = res.list;
-                                        for (let key in article_list) {
-                                            sort_id_list[article_list[key].sort_id] = key;
-                                            count++;
-                                        }
-                                    }
-                                }
-
-                                // Gather the requested articles, either from the cached audio files or
-                                // from Pocket
-                                let batchWriteParams = {
-                                    RequestItems: {}
-                                };
-                                batchWriteParams.RequestItems[constants.playlistTableName] = [];
-
-                                if (!err && res.status && res.complete) {
-                                    // For debugging purposes, set count to 1.
-                                    // count = 1;
-                                    let orderCount = 0;
-                                    for (let i = 0; i < count; ++i) {
-                                        let article = article_list[sort_id_list[String(i)]];
-
-                                        // Create a random string of characters to use as an additional key, 
-                                        // allowing an article to be played back by multiple users at the 
-                                        // same time without interference.
-                                        const random_string = RandomString.newString(constants.randomStringLength);
-                                        const key = `${random_string}-${article.resolved_id}`;
-
-                                        batchWriteParams.RequestItems[constants.playlistTableName].push({
-                                            PutRequest: {
-                                                Item: {
-                                                    access_token: access_token,
-                                                    order: orderCount++,
-                                                    article_key: key,
-                                                    article_url: article.resolved_url,
-                                                    curr_index: 0
-                                                }
-                                            }
-                                        });
-                                    }
-                                }
-                                // console.log("put audio asset and playlist entry batchWrite:", JSON.stringify(batchWriteParams));
-                                let arrays = [];
-                                const size = 25;
-                                // console.log("batchWriteParams keys:", JSON.stringify(Object.keys(batchWriteParams.RequestItems)));
-                                Object.keys(batchWriteParams.RequestItems).forEach(function (key, index, keys) {
-                                    console.log(key, index, keys.length);
-                                    let a = batchWriteParams.RequestItems[key];
-                                    while (a.length > 0) {
-                                        let temp = {
-                                            RequestItems: {}
-                                        };
-                                        temp.RequestItems[key] = a.splice(0, size);
-                                        arrays.push(temp);
-                                    }
-                                    if (index + 1 >= keys.length) {
-                                        console.log("split batchWrite params:", JSON.stringify(arrays));
-                                        arrays.forEach(function (params, index, paramsArray) {
-                                            dynamodb.batchWrite(params, function (err, data) {
-                                                if (err) {
-                                                    console.log('ERROR: Dynamo failed: ' + err);
-                                                } else {
-                                                    // console.log('put audio asset and playlist entry batchWrite success');
-                                                    if (index + 1 >= paramsArray.length)
-                                                        self.emit('PlayAudio');
-                                                }
-                                            });
-                                        });
-                                    }
-                                });
-                            });
-                        } else {
-                            this.emit(':ask', `${LANGUAGE.error} ${LANGUAGE.additionalRequests}`);
-                        }
-                    });
                 }
-            });
+
+                // Retrieve the n newest|oldest articles using Pocket's Retrieve API
+                let request_data = {
+                    "consumer_key": process.env.POCKET_CONSUMER_KEY,
+                    "access_token": access_token,
+                    "count": fetch_data['number'],
+                    "detailType": "simple",
+                    "sort": fetch_data['qualifier'],
+                    "contentType": "article"
+                };
+                let url = 'https://getpocket.com/v3/get';
+                requests.makeRequest(url, request_data, function (err, res) {
+                    let article_list = {},
+                        sort_id_list = {};
+                    let count = 0;
+                    if (!err) {
+                        if (res.status && res.complete) {
+                            article_list = res.list;
+                            for (let key in article_list) {
+                                sort_id_list[article_list[key].sort_id] = key;
+                                count++;
+                            }
+                        }
+                    }
+
+                    // Gather the requested articles, either from the cached audio files or
+                    // from Pocket
+                    if (!err && res.status && res.complete) {
+                        // For debugging purposes, set count to 1.
+                        // count = 1;
+                        // let orderCount = 0;
+                        for (let i = 0; i < count; ++i) {
+                            let article = article_list[sort_id_list[String(i)]];
+
+                            // Create a random string of characters to use as an additional key, 
+                            // allowing an article to be played back by multiple users at the 
+                            // same time without interference.
+                            const random_string = RandomString.newString(constants.randomStringLength);
+                            const key = `${random_string}-${article.resolved_id}`;
+
+                            self.attributes['playlist'].push({
+                                access_token: access_token,
+                                order: self.attributes['playlist'].length,
+                                article_key: key,
+                                article_url: article.resolved_url,
+                                curr_index: 0
+                            });
+                        }
+                        self.emit('PlayAudio');
+                    }
+                });
+            } else {
+                this.emit(':ask', `${LANGUAGE.error} ${LANGUAGE.additionalRequests}`);
+            }
         },
         'Unhandled': function () {
             var message = 'Sorry, I could not understand. Please say, play the audio, to begin the audio.';
@@ -289,40 +206,40 @@ let stateHandlers = {
         'PlayAudio': function () {
             //  Change state to START_MODE
             this.handler.state = constants.states.START_MODE;
-            let access_token = this.event.session.user.accessToken;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "#token = :access_token",
-                ExpressionAttributeNames: {
-                    "#token": "access_token"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token
-                },
-                Select: "COUNT"
-            };
-            // console.log("playlist numItems query:", JSON.stringify(params));
+            // let access_token = this.event.session.user.accessToken;
+            // let params = {
+            //     TableName: constants.playlistTableName,
+            //     KeyConditionExpression: "#token = :access_token",
+            //     ExpressionAttributeNames: {
+            //         "#token": "access_token"
+            //     },
+            //     ExpressionAttributeValues: {
+            //         ":access_token": access_token
+            //     },
+            //     Select: "COUNT"
+            // };
+            // // console.log("playlist numItems query:", JSON.stringify(params));
             let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    if (!self.attributes['playOrder'] || self.attributes['playOrder'].length !== data.Count) {
+            // dynamodb.query(params, function (err, data) {
+            //     if (err) {
+            //         console.log(err, err.stack);
+            //     } else {
+            if (!self.attributes['playOrder'] || self.attributes['playOrder'].length !== self.attributes['playlist'].length) {
 
-                        // console.log("playlist numItems result:", JSON.stringify(data));
-                        // Initialize Attributes if undefined.
-                        self.attributes['playOrder'] = Array.apply(null, {
-                            length: data.Count
-                        }).map(Number.call, Number);
-                        self.attributes['index'] = 0;
-                        self.attributes['offsetInMilliseconds'] = 0;
-                        self.attributes['loop'] = false;
-                        self.attributes['shuffle'] = false;
-                        self.attributes['playbackIndexChanged'] = true;
-                    }
-                    controller.play.call(self);
-                }
-            });
+                // console.log("playlist numItems result:", JSON.stringify(data));
+                // Initialize Attributes if undefined.
+                self.attributes['playOrder'] = Array.apply(null, {
+                    length: self.attributes['playlist'].length
+                }).map(Number.call, Number);
+                self.attributes['index'] = 0;
+                self.attributes['offsetInMilliseconds'] = 0;
+                self.attributes['loop'] = false;
+                self.attributes['shuffle'] = false;
+                self.attributes['playbackIndexChanged'] = true;
+            }
+            controller.play.call(self);
+            // }
+            // });
 
         },
         'AMAZON.HelpIntent': function () {
@@ -469,32 +386,33 @@ let stateHandlers = {
          *  All Intent Handlers for state : RESUME_DECISION_MODE
          */
         'LaunchRequest': function () {
-            let access_token = this.event.session.user.accessToken;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
-                ExpressionAttributeNames: {
-                    "#token": "access_token",
-                    "#order": "order"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token,
-                    ":curr_index": this.attributes['playOrder'][this.attributes['index']]
-                }
-            };
-            // console.log("playlist items query:", JSON.stringify(params));
-            let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    var message = 'You were listening to ' + data.Items[0].title +
-                        ' Would you like to resume?';
-                    var reprompt = 'You can say yes to resume or no to play from the top.';
-                    this.response.speak(message).listen(reprompt);
-                    this.emit(':responseReady');
-                }
-            });
+            // let access_token = this.event.session.user.accessToken;
+            // let params = {
+            //     TableName: constants.playlistTableName,
+            //     KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
+            //     ExpressionAttributeNames: {
+            //         "#token": "access_token",
+            //         "#order": "order"
+            //     },
+            //     ExpressionAttributeValues: {
+            //         ":access_token": access_token,
+            //         ":curr_index": this.attributes['playOrder'][this.attributes['index']]
+            //     }
+            // };
+            // // console.log("playlist items query:", JSON.stringify(params));
+            // let self = this;
+            // dynamodb.query(params, function (err, data) {
+            //     if (err) {
+            //         console.log(err, err.stack);
+            //     } else {
+            let index = this.attributes['playOrder'][this.attributes['index']];
+            var message = 'You were listening to ' + this.attributes['playlist'][index].title +
+                ' Would you like to resume?';
+            var reprompt = 'You can say yes to resume or no to play from the top.';
+            this.response.speak(message).listen(reprompt);
+            this.emit(':responseReady');
+            // }
+            // });
         },
         'AMAZON.YesIntent': function () {
             controller.play.call(this)
@@ -503,33 +421,12 @@ let stateHandlers = {
             controller.reset.call(this)
         },
         'AMAZON.HelpIntent': function () {
-            let access_token = this.event.session.user.accessToken;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
-                ExpressionAttributeNames: {
-                    "#token": "access_token",
-                    "#order": "order"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token,
-                    ":curr_index": this.attributes['playOrder'][this.attributes['index']]
-                }
-            };
-            // console.log("playlist items query:", JSON.stringify(params));
-            let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    // console.log("playlist items query result:", JSON.stringify(data));
-                    var message = 'You were listening to ' + data.Items[0].title +
-                        ' Would you like to resume?';
-                    var reprompt = 'You can say yes to resume or no to play from the top.';
-                    this.response.speak(message).listen(reprompt);
-                    this.emit(':responseReady');
-                }
-            });
+            let index = this.attributes['playOrder'][this.attributes['index']];
+            var message = 'You were listening to ' + this.attributes['playlist'][index].title +
+                ' Would you like to resume?';
+            var reprompt = 'You can say yes to resume or no to play from the top.';
+            this.response.speak(message).listen(reprompt);
+            this.emit(':responseReady');
         },
         'AMAZON.StopIntent': function () {
             var message = 'Good bye.';
@@ -575,10 +472,11 @@ var controller = function () {
 
             const token = String(this.attributes['playOrder'][this.attributes['index']]);
             const playBehavior = 'REPLACE_ALL';
-            const access_token = this.event.session.user.accessToken;
+            // const access_token = this.event.session.user.accessToken;
             const curr_index = this.attributes['playOrder'][this.attributes['index']];
             let self = this;
-            playlist.getNextAudioAsset(access_token, curr_index, function (audioAsset) {
+            playlist.getNextAudioAsset(this.attributes['playlist'][curr_index], function (audioAsset) {
+                self.attributes['playlist'][curr_index].curr_index++;
                 console.log("audioAsset", JSON.stringify(audioAsset));
                 const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
                 // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
@@ -609,47 +507,48 @@ var controller = function () {
              *  Index is computed using token stored when AudioPlayer.PlaybackStopped command is received.
              *  If reached at the end of the playlist, choose behavior based on "loop" flag.
              */
+            //FIXME: Update to use the new playlist array stored in this.attributes['playlist']
             let index = this.attributes['index'];
-            let access_token = this.event.session.user.accessToken;
+            // let access_token = this.event.session.user.accessToken;
             index += 1;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "#token = :access_token",
-                ExpressionAttributeNames: {
-                    "#token": "access_token"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token
-                },
-                Select: "COUNT"
-            };
-            console.log("database query:", params);
+            // let params = {
+            //     TableName: constants.playlistTableName,
+            //     KeyConditionExpression: "#token = :access_token",
+            //     ExpressionAttributeNames: {
+            //         "#token": "access_token"
+            //     },
+            //     ExpressionAttributeValues: {
+            //         ":access_token": access_token
+            //     },
+            //     Select: "COUNT"
+            // };
+            // console.log("database query:", params);
             let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
+            // dynamodb.query(params, function (err, data) {
+            //     if (err) {
+            //         console.log(err, err.stack);
+            //     } else {
+            // Check for last audio file.
+            if (index === self.attributes['playlist'].length) {
+                if (self.attributes['loop']) {
+                    index = 0;
                 } else {
-                    // Check for last audio file.
-                    if (index === data.Count) {
-                        if (self.attributes['loop']) {
-                            index = 0;
-                        } else {
-                            // Reached at the end. Thus reset state to start mode and stop playing.
-                            self.handler.state = constants.states.START_MODE;
+                    // Reached at the end. Thus reset state to start mode and stop playing.
+                    self.handler.state = constants.states.START_MODE;
 
-                            var message = 'You have reached at the end of the playlist.';
-                            self.response.speak(message).audioPlayerStop();
-                            return self.emit(':responseReady');
-                        }
-                    }
-                    // Set values to attributes.
-                    self.attributes['index'] = index;
-                    self.attributes['offsetInMilliseconds'] = 0;
-                    self.attributes['playbackIndexChanged'] = true;
-
-                    controller.play.call(self);
+                    var message = 'You have reached at the end of the playlist.';
+                    self.response.speak(message).audioPlayerStop();
+                    return self.emit(':responseReady');
                 }
-            });
+            }
+            // Set values to attributes.
+            self.attributes['index'] = index;
+            self.attributes['offsetInMilliseconds'] = 0;
+            self.attributes['playbackIndexChanged'] = true;
+
+            controller.play.call(self);
+            //     }
+            // });
         },
         // TODO: Update playPrevious to play previous article, not previous audio asset.
         playPrevious: function () {
@@ -659,46 +558,46 @@ var controller = function () {
              *  If reached at the end of the playlist, choose behavior based on "loop" flag.
              */
             let index = this.attributes['index'];
-            let access_token = this.event.session.user.accessToken;
+            // let access_token = this.event.session.user.accessToken;
             index -= 1;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "#token = :access_token",
-                ExpressionAttributeNames: {
-                    "#token": "access_token"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token
-                },
-                Select: "COUNT"
-            };
+            // let params = {
+            //     TableName: constants.playlistTableName,
+            //     KeyConditionExpression: "#token = :access_token",
+            //     ExpressionAttributeNames: {
+            //         "#token": "access_token"
+            //     },
+            //     ExpressionAttributeValues: {
+            //         ":access_token": access_token
+            //     },
+            //     Select: "COUNT"
+            // };
             console.log("database query:", params);
             let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
+            // dynamodb.query(params, function (err, data) {
+            //     if (err) {
+            //         console.log(err, err.stack);
+            //     } else {
+            // Check for last audio file.
+            if (index === -1) {
+                if (self.attributes['loop']) {
+                    index = self.attributes['playlist'].length - 1;
                 } else {
-                    // Check for last audio file.
-                    if (index === -1) {
-                        if (self.attributes['loop']) {
-                            index = data.Count - 1;
-                        } else {
-                            // Reached at the end. Thus reset state to start mode and stop playing.
-                            self.handler.state = constants.states.START_MODE;
+                    // Reached at the end. Thus reset state to start mode and stop playing.
+                    self.handler.state = constants.states.START_MODE;
 
-                            var message = 'You have reached at the start of the playlist.';
-                            self.response.speak(message).audioPlayerStop();
-                            return self.emit(':responseReady');
-                        }
-                    }
-                    // Set values to attributes.
-                    self.attributes['index'] = index;
-                    self.attributes['offsetInMilliseconds'] = 0;
-                    self.attributes['playbackIndexChanged'] = true;
-
-                    controller.play.call(self);
+                    var message = 'You have reached at the start of the playlist.';
+                    self.response.speak(message).audioPlayerStop();
+                    return self.emit(':responseReady');
                 }
-            });
+            }
+            // Set values to attributes.
+            self.attributes['index'] = index;
+            self.attributes['offsetInMilliseconds'] = 0;
+            self.attributes['playbackIndexChanged'] = true;
+
+            controller.play.call(self);
+            //     }
+            // });
         },
         loopOn: function () {
             // Turn on loop play.
@@ -728,35 +627,35 @@ var controller = function () {
         },
         shuffleOff: function () {
             // Turn off shuffle play. 
-            let access_token = this.event.session.user.accessToken;
-            let params = {
-                TableName: constants.playlistTableName,
-                KeyConditionExpression: "#token = :access_token",
-                ExpressionAttributeNames: {
-                    "#token": "access_token"
-                },
-                ExpressionAttributeValues: {
-                    ":access_token": access_token
-                },
-                Select: "COUNT"
-            };
-            console.log("database query:", params);
+            // let access_token = this.event.session.user.accessToken;
+            // let params = {
+            //     TableName: constants.playlistTableName,
+            //     KeyConditionExpression: "#token = :access_token",
+            //     ExpressionAttributeNames: {
+            //         "#token": "access_token"
+            //     },
+            //     ExpressionAttributeValues: {
+            //         ":access_token": access_token
+            //     },
+            //     Select: "COUNT"
+            // };
+            // console.log("database query:", params);
             let self = this;
-            dynamodb.query(params, function (err, data) {
-                if (err) {
-                    console.log(err, err.stack);
-                } else {
-                    if (self.attributes['shuffle']) {
-                        self.attributes['shuffle'] = false;
-                        // Although changing index, no change in audio file being played as the change is to account for reordering playOrder
-                        self.attributes['index'] = self.attributes['playOrder'][self.attributes['index']];
-                        self.attributes['playOrder'] = Array.apply(null, {
-                            length: data.Count
-                        }).map(Number.call, Number);
-                    }
-                    controller.play.call(self);
-                }
-            });
+            // dynamodb.query(params, function (err, data) {
+            //     if (err) {
+            //         console.log(err, err.stack);
+            //     } else {
+            if (self.attributes['shuffle']) {
+                self.attributes['shuffle'] = false;
+                // Although changing index, no change in audio file being played as the change is to account for reordering playOrder
+                self.attributes['index'] = self.attributes['playOrder'][self.attributes['index']];
+                self.attributes['playOrder'] = Array.apply(null, {
+                    length: self.attributes['playlist'].length
+                }).map(Number.call, Number);
+            }
+            controller.play.call(self);
+            //     }
+            // });
         },
         // TODO: Change startOver to start at the beginning of the article, not the audioAsset.
         startOver: function () {
@@ -790,38 +689,38 @@ function canThrowCard() {
 
 function shuffleOrder(callback) {
     // Algorithm : Fisher-Yates shuffle
-    let access_token = this.event.session.user.accessToken;
-    let params = {
-        TableName: constants.playlistTableName,
-        KeyConditionExpression: "#token = :access_token",
-        ExpressionAttributeNames: {
-            "#token": "access_token"
-        },
-        ExpressionAttributeValues: {
-            ":access_token": access_token
-        },
-        Select: "COUNT"
-    };
-    console.log("database query:", params);
-    let self = this;
-    dynamodb.query(params, function (err, data) {
-        if (err) {
-            console.log(err, err.stack);
-        } else {
-            var array = Array.apply(null, {
-                length: data.Count
-            }).map(Number.call, Number);
-            var currentIndex = data.Count;
-            var temp, randomIndex;
+    // let access_token = this.event.session.user.accessToken;
+    // let params = {
+    //     TableName: constants.playlistTableName,
+    //     KeyConditionExpression: "#token = :access_token",
+    //     ExpressionAttributeNames: {
+    //         "#token": "access_token"
+    //     },
+    //     ExpressionAttributeValues: {
+    //         ":access_token": access_token
+    //     },
+    //     Select: "COUNT"
+    // };
+    // console.log("database query:", params);
+    // let self = this;
+    // dynamodb.query(params, function (err, data) {
+    //     if (err) {
+    //         console.log(err, err.stack);
+    //     } else {
+    var array = Array.apply(null, {
+        length: this.attributes['playlist'].length
+    }).map(Number.call, Number);
+    var currentIndex = this.attributes['playlist'].length;
+    var temp, randomIndex;
 
-            while (currentIndex >= 1) {
-                randomIndex = Math.floor(Math.random() * currentIndex);
-                currentIndex -= 1;
-                temp = array[currentIndex];
-                array[currentIndex] = array[randomIndex];
-                array[randomIndex] = temp;
-            }
-            callback(array);
-        }
-    });
+    while (currentIndex >= 1) {
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex -= 1;
+        temp = array[currentIndex];
+        array[currentIndex] = array[randomIndex];
+        array[randomIndex] = temp;
+    }
+    callback(array);
+    //     }
+    // });
 }
