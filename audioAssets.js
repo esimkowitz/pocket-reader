@@ -104,7 +104,8 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                                 Bucket: bucket,
                                 Key: fileName,
                                 Body: data.AudioStream,
-                                ACL: 'public-read'
+                                ACL: 'public-read',
+                                Tagging: "EXPIRETIME=24&EXPIRE=True"
                             };
 
                             let s3 = new AWS.S3();
