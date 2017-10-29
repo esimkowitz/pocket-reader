@@ -10,9 +10,6 @@ let AWS = require('aws-sdk');
 AWS.config.update({
     region: 'us-east-1'
 });
-let dynamodb = new AWS.DynamoDB.DocumentClient({
-    region: 'us-east-1'
-});
 
 
 const DIALOG_DIRECTIVE_SUPPORT = true;
@@ -45,7 +42,6 @@ let LANGUAGE = LANGUAGE_STRINGS.en;
 let stateHandlers = {
     fetchModeIntentHandlers: Alexa.CreateStateHandler(constants.states.FETCH_MODE, {
         'FetchArticleIntent': function () {
-            // this.emit('Reflect', this.event.request);
             let request = this.event.request;
 
             //  Change state to FETCH_MODE
@@ -83,7 +79,6 @@ let stateHandlers = {
                 'qualifier': 'newest',
                 'number': 1
             };
-            let self = this;
 
             if (slots) {
                 for (let i in slots) {
@@ -126,6 +121,7 @@ let stateHandlers = {
                     "contentType": "article"
                 };
                 let url = 'https://getpocket.com/v3/get';
+                let self = this;
                 requests.makeRequest(url, request_data, function (err, res) {
                     let article_list = {},
                         sort_id_list = {};
@@ -145,7 +141,6 @@ let stateHandlers = {
                     if (!err && res.status && res.complete) {
                         // For debugging purposes, set count to 1.
                         // count = 1;
-                        // let orderCount = 0;
                         for (let i = 0; i < count; ++i) {
                             let article = article_list[sort_id_list[String(i)]];
 
@@ -206,40 +201,19 @@ let stateHandlers = {
         'PlayAudio': function () {
             //  Change state to START_MODE
             this.handler.state = constants.states.START_MODE;
-            // let access_token = this.event.session.user.accessToken;
-            // let params = {
-            //     TableName: constants.playlistTableName,
-            //     KeyConditionExpression: "#token = :access_token",
-            //     ExpressionAttributeNames: {
-            //         "#token": "access_token"
-            //     },
-            //     ExpressionAttributeValues: {
-            //         ":access_token": access_token
-            //     },
-            //     Select: "COUNT"
-            // };
-            // // console.log("playlist numItems query:", JSON.stringify(params));
-            let self = this;
-            // dynamodb.query(params, function (err, data) {
-            //     if (err) {
-            //         console.log(err, err.stack);
-            //     } else {
-            if (!self.attributes['playOrder'] || self.attributes['playOrder'].length !== self.attributes['playlist'].length) {
+            if (!this.attributes['playOrder'] || this.attributes['playOrder'].length !== this.attributes['playlist'].length) {
 
-                // console.log("playlist numItems result:", JSON.stringify(data));
                 // Initialize Attributes if undefined.
-                self.attributes['playOrder'] = Array.apply(null, {
-                    length: self.attributes['playlist'].length
+                this.attributes['playOrder'] = Array.apply(null, {
+                    length: this.attributes['playlist'].length
                 }).map(Number.call, Number);
-                self.attributes['index'] = 0;
-                self.attributes['offsetInMilliseconds'] = 0;
-                self.attributes['loop'] = false;
-                self.attributes['shuffle'] = false;
-                self.attributes['playbackIndexChanged'] = true;
+                this.attributes['index'] = 0;
+                this.attributes['offsetInMilliseconds'] = 0;
+                this.attributes['loop'] = false;
+                this.attributes['shuffle'] = false;
+                this.attributes['playbackIndexChanged'] = true;
             }
-            controller.play.call(self);
-            // }
-            // });
+            controller.play.call(this);
 
         },
         'AMAZON.HelpIntent': function () {
@@ -386,33 +360,12 @@ let stateHandlers = {
          *  All Intent Handlers for state : RESUME_DECISION_MODE
          */
         'LaunchRequest': function () {
-            // let access_token = this.event.session.user.accessToken;
-            // let params = {
-            //     TableName: constants.playlistTableName,
-            //     KeyConditionExpression: "(#token = :access_token) AND (#order = :curr_index)",
-            //     ExpressionAttributeNames: {
-            //         "#token": "access_token",
-            //         "#order": "order"
-            //     },
-            //     ExpressionAttributeValues: {
-            //         ":access_token": access_token,
-            //         ":curr_index": this.attributes['playOrder'][this.attributes['index']]
-            //     }
-            // };
-            // // console.log("playlist items query:", JSON.stringify(params));
-            // let self = this;
-            // dynamodb.query(params, function (err, data) {
-            //     if (err) {
-            //         console.log(err, err.stack);
-            //     } else {
             let index = this.attributes['playOrder'][this.attributes['index']];
             var message = 'You were listening to ' + this.attributes['playlist'][index].title +
                 ' Would you like to resume?';
             var reprompt = 'You can say yes to resume or no to play from the top.';
             this.response.speak(message).listen(reprompt);
             this.emit(':responseReady');
-            // }
-            // });
         },
         'AMAZON.YesIntent': function () {
             controller.play.call(this)
@@ -507,48 +460,27 @@ var controller = function () {
              *  Index is computed using token stored when AudioPlayer.PlaybackStopped command is received.
              *  If reached at the end of the playlist, choose behavior based on "loop" flag.
              */
-            //FIXME: Update to use the new playlist array stored in this.attributes['playlist']
             let index = this.attributes['index'];
-            // let access_token = this.event.session.user.accessToken;
             index += 1;
-            // let params = {
-            //     TableName: constants.playlistTableName,
-            //     KeyConditionExpression: "#token = :access_token",
-            //     ExpressionAttributeNames: {
-            //         "#token": "access_token"
-            //     },
-            //     ExpressionAttributeValues: {
-            //         ":access_token": access_token
-            //     },
-            //     Select: "COUNT"
-            // };
-            // console.log("database query:", params);
-            let self = this;
-            // dynamodb.query(params, function (err, data) {
-            //     if (err) {
-            //         console.log(err, err.stack);
-            //     } else {
             // Check for last audio file.
-            if (index === self.attributes['playlist'].length) {
-                if (self.attributes['loop']) {
+            if (index === this.attributes['playlist'].length) {
+                if (this.attributes['loop']) {
                     index = 0;
                 } else {
                     // Reached at the end. Thus reset state to start mode and stop playing.
-                    self.handler.state = constants.states.START_MODE;
+                    this.handler.state = constants.states.START_MODE;
 
                     var message = 'You have reached at the end of the playlist.';
-                    self.response.speak(message).audioPlayerStop();
-                    return self.emit(':responseReady');
+                    this.response.speak(message).audioPlayerStop();
+                    return this.emit(':responseReady');
                 }
             }
             // Set values to attributes.
-            self.attributes['index'] = index;
-            self.attributes['offsetInMilliseconds'] = 0;
-            self.attributes['playbackIndexChanged'] = true;
+            this.attributes['index'] = index;
+            this.attributes['offsetInMilliseconds'] = 0;
+            this.attributes['playbackIndexChanged'] = true;
 
-            controller.play.call(self);
-            //     }
-            // });
+            controller.play.call(this);
         },
         // TODO: Update playPrevious to play previous article, not previous audio asset.
         playPrevious: function () {
@@ -558,46 +490,26 @@ var controller = function () {
              *  If reached at the end of the playlist, choose behavior based on "loop" flag.
              */
             let index = this.attributes['index'];
-            // let access_token = this.event.session.user.accessToken;
             index -= 1;
-            // let params = {
-            //     TableName: constants.playlistTableName,
-            //     KeyConditionExpression: "#token = :access_token",
-            //     ExpressionAttributeNames: {
-            //         "#token": "access_token"
-            //     },
-            //     ExpressionAttributeValues: {
-            //         ":access_token": access_token
-            //     },
-            //     Select: "COUNT"
-            // };
-            console.log("database query:", params);
-            let self = this;
-            // dynamodb.query(params, function (err, data) {
-            //     if (err) {
-            //         console.log(err, err.stack);
-            //     } else {
             // Check for last audio file.
             if (index === -1) {
-                if (self.attributes['loop']) {
-                    index = self.attributes['playlist'].length - 1;
+                if (this.attributes['loop']) {
+                    index = this.attributes['playlist'].length - 1;
                 } else {
                     // Reached at the end. Thus reset state to start mode and stop playing.
-                    self.handler.state = constants.states.START_MODE;
+                    this.handler.state = constants.states.START_MODE;
 
                     var message = 'You have reached at the start of the playlist.';
-                    self.response.speak(message).audioPlayerStop();
-                    return self.emit(':responseReady');
+                    this.response.speak(message).audioPlayerStop();
+                    return this.emit(':responseReady');
                 }
             }
             // Set values to attributes.
-            self.attributes['index'] = index;
-            self.attributes['offsetInMilliseconds'] = 0;
-            self.attributes['playbackIndexChanged'] = true;
+            this.attributes['index'] = index;
+            this.attributes['offsetInMilliseconds'] = 0;
+            this.attributes['playbackIndexChanged'] = true;
 
-            controller.play.call(self);
-            //     }
-            // });
+            controller.play.call(this);
         },
         loopOn: function () {
             // Turn on loop play.
@@ -627,35 +539,15 @@ var controller = function () {
         },
         shuffleOff: function () {
             // Turn off shuffle play. 
-            // let access_token = this.event.session.user.accessToken;
-            // let params = {
-            //     TableName: constants.playlistTableName,
-            //     KeyConditionExpression: "#token = :access_token",
-            //     ExpressionAttributeNames: {
-            //         "#token": "access_token"
-            //     },
-            //     ExpressionAttributeValues: {
-            //         ":access_token": access_token
-            //     },
-            //     Select: "COUNT"
-            // };
-            // console.log("database query:", params);
-            let self = this;
-            // dynamodb.query(params, function (err, data) {
-            //     if (err) {
-            //         console.log(err, err.stack);
-            //     } else {
-            if (self.attributes['shuffle']) {
-                self.attributes['shuffle'] = false;
+            if (this.attributes['shuffle']) {
+                this.attributes['shuffle'] = false;
                 // Although changing index, no change in audio file being played as the change is to account for reordering playOrder
-                self.attributes['index'] = self.attributes['playOrder'][self.attributes['index']];
-                self.attributes['playOrder'] = Array.apply(null, {
-                    length: self.attributes['playlist'].length
+                this.attributes['index'] = this.attributes['playOrder'][this.attributes['index']];
+                this.attributes['playOrder'] = Array.apply(null, {
+                    length: this.attributes['playlist'].length
                 }).map(Number.call, Number);
             }
-            controller.play.call(self);
-            //     }
-            // });
+            controller.play.call(this);
         },
         // TODO: Change startOver to start at the beginning of the article, not the audioAsset.
         startOver: function () {

@@ -10,36 +10,6 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
     region: 'us-east-1'
 });
 
-// If numSlices is not a property of the playlist table entry, add it for quicker/easier
-// querying in the future.
-function addNumSlices(playlist_item, numSlices, callback) {
-    if (!("numSlices" in playlist_item)) {
-        let params = {
-            TableName: constants.playlistTableName,
-            Key: {
-                "access_token": playlist_item.access_token,
-                "order": playlist_item.order
-            },
-            UpdateExpression: "set numSlices = :s",
-            ExpressionAttributeValues: {
-                ":s": numSlices
-            },
-            ReturnValues: "UPDATED_NEW"
-        };
-        // console.log("update playlist item query: " + JSON.stringify(params));
-        dynamodb.update(params, function (err, data) {
-            if (err) {
-                console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
-            } else {
-                console.log("UpdateItem succeeded: " + "\n" + JSON.stringify(data, undefined, 2));
-                callback();
-            }
-        });
-    } else {
-        callback();
-    }
-}
-
 function getNextAudioAsset(playlist_item, callback) {
     setTimeout(function () {
         console.log("current playlist item: " + JSON.stringify(playlist_item));
@@ -70,19 +40,17 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                 let audio_asset = data.Item;
                 if (audio_asset.downloaded) {
                     console.log("audio asset exists");
-                    
-                    //addNumSlices(playlist_item, audio_asset.numSlices, function () {
-                        if (((index + 1) < audio_asset.numSlices) && getAnother) {
-                            // Made an anomymous function to solve reliability issues of timeout
-                            // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
-                            (function (playlist_item) {
-                                getNextAudioAsset(playlist_item, function () {
-                                    console.log("Finished fetch next item");
-                                });
-                            })(playlist_item);
-                        }
-                        callback(audio_asset);
-                   // });
+
+                    if (((index + 1) < audio_asset.numSlices) && getAnother) {
+                        // Made an anomymous function to solve reliability issues of timeout
+                        // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
+                        (function (playlist_item) {
+                            getNextAudioAsset(playlist_item, function () {
+                                console.log("Finished fetch next item");
+                            });
+                        })(playlist_item);
+                    }
+                    callback(audio_asset);
                 } else {
                     const output_format = constants.audioAssetFormat;
                     let params = {
@@ -134,19 +102,16 @@ function getAudioAsset(playlist_item, callback, getAnother = true) {
                                     if (err) console.log("ERROR", err, err.stack); // an error occurred
                                     audio_asset.url = url;
                                     audio_asset.downloaded = true;
-                                    // else console.log("Batch write successful, asset put in table, deleted from Polly queue");
-                                    //addNumSlices(playlist_item, audio_asset.numSlices, function () {
-                                        if (((index + 1) < audio_asset.numSlices) && getAnother) {
-                                            // Made an anomymous function to solve reliability issues of timeout
-                                            // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
-                                            (function (playlist_item) {
-                                                getNextAudioAsset(playlist_item, function () {
-                                                    console.log("Finished fetch next item");
-                                                });
-                                            })(playlist_item);
-                                        }
-                                        callback(audio_asset);
-                                   // });
+                                    if (((index + 1) < audio_asset.numSlices) && getAnother) {
+                                        // Made an anomymous function to solve reliability issues of timeout
+                                        // credit: https://stackoverflow.com/questions/2171602/settimeout-and-anonymous-function-problem
+                                        (function (playlist_item) {
+                                            getNextAudioAsset(playlist_item, function () {
+                                                console.log("Finished fetch next item");
+                                            });
+                                        })(playlist_item);
+                                    }
+                                    callback(audio_asset);
                                 });
                             });
                         }

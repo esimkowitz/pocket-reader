@@ -14,33 +14,7 @@ let dynamodb = new AWS.DynamoDB.DocumentClient({
     region: 'us-east-1'
 });
 
-// TODO: Move the curr_index update to the PlaybackStarted handler in audioEventHandlers.js
-function respond(article, index, callback) {
-    let params = {
-        TableName: constants.playlistTableName,
-        Key: {
-            "access_token": article.access_token,
-            "order": index
-        },
-        UpdateExpression: "set #I = :i",
-        ExpressionAttributeNames: {
-            "#I": "curr_index"
-        },
-        ExpressionAttributeValues: {
-            ":i": article.curr_index + 1
-        },
-        ReturnValues: "UPDATED_NEW"
-    };
-    console.log("update playlist item query: " + JSON.stringify(params));
-    dynamodb.update(params, function (err, data) {
-        if (err) {
-            console.log("Unable to update item: " + "\n" + JSON.stringify(err, undefined, 2));
-        } else {
-            audioAssets.get(article, callback);
-        }
-    });
-}
-
+// DEPRECATED
 function clearOldAudioAssets(article, callback, delete_all = false) {
     var numAssetsToDelete = 0;
     let emitter = new EventEmitter;
@@ -116,21 +90,6 @@ function clearOldAudioAssets(article, callback, delete_all = false) {
 }
 
 function getNextAudioAsset(article, callback) {
-    // let params = {
-    //     TableName: constants.playlistTableName,
-    //     Key: {
-    //         access_token: access_token,
-    //         order: index
-    //     }
-    // };
-    // // console.log("playlist items query:", JSON.stringify(params));
-    // // let self = this;
-    // dynamodb.get(params, function (err, data) {
-    //     if (err) {
-    //         console.log(err, err.stack);
-    //     } else {
-    //         // console.log("playlist items query result:", JSON.stringify(data));
-    //         let article = data.Item;
     let params = {
         TableName: constants.audioAssetTableName,
         KeyConditionExpression: "(#article_key = :article) AND (#index = :curr_index)",
@@ -150,7 +109,6 @@ function getNextAudioAsset(article, callback) {
         if (!err) {
             if (data.Count > 0) {
                 console.log("Asset exists");
-                // respond(article, index, callback);
                 audioAssets.get(article, callback);
             } else {
                 console.log("Asset doesn't exist");
@@ -221,9 +179,7 @@ function getNextAudioAsset(article, callback) {
                                                 } else {
                                                     // console.log('put polly queue batchWrite success');
                                                     if (paramsIndex + 1 >= paramsArray.length)
-                                                        // respond(article, index, callback);
                                                         audioAssets.get(article, callback);
-                                                    // audioAssets.get(article.article_key, article.article_index, callback);
                                                 }
                                             });
                                         });
