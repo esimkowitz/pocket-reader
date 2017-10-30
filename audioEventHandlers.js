@@ -101,7 +101,6 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         const playBehavior = 'ENQUEUE';
         let self = this;
         playlist.getNextAudioAsset(self.attributes['playlist'][enqueueIndex], function (audioAsset) {
-            self.attributes['playlist'][enqueueIndex].curr_index++;
             console.log("audioAsset", JSON.stringify(audioAsset));
             let expectedPreviousToken = self.attributes['token'];
             let offsetInMilliseconds = 0;

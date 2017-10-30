@@ -89,6 +89,16 @@ function clearOldAudioAssets(article, callback, delete_all = false) {
     });
 }
 
+function return_next(article, callback) {
+    audioAssets.get(article, function (audio_asset) {
+        if (!('numSlices' in article)) {
+            article.numSlices = audio_asset.numSlices;
+        }
+        article.curr_index++;
+        callback(audio_asset);
+    });
+}
+
 function getNextAudioAsset(article, callback) {
     let params = {
         TableName: constants.audioAssetTableName,
@@ -109,7 +119,7 @@ function getNextAudioAsset(article, callback) {
         if (!err) {
             if (data.Count > 0) {
                 console.log("Asset exists");
-                audioAssets.get(article, callback);
+                return_next(article, callback);
             } else {
                 console.log("Asset doesn't exist");
                 // Use Pocket's Article View API to obtain the parsed text of the articles.
@@ -151,7 +161,8 @@ function getNextAudioAsset(article, callback) {
                                         title: res.title,
                                         text: response_text,
                                         downloaded: false,
-                                        expireTime: Date.now() + constants.audioAssetExpireTime
+                                        createdTime: Math.floor(Date.now() / 1000),
+                                        expireTime: Math.floor((Date.now() + constants.audioAssetExpireTime) / 1000)
                                     }
                                 }
                             });
@@ -179,7 +190,7 @@ function getNextAudioAsset(article, callback) {
                                                 } else {
                                                     // console.log('put polly queue batchWrite success');
                                                     if (paramsIndex + 1 >= paramsArray.length)
-                                                        audioAssets.get(article, callback);
+                                                        return_next(article, callback);
                                                 }
                                             });
                                         });

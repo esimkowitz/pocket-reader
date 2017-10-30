@@ -429,7 +429,6 @@ var controller = function () {
             const curr_index = this.attributes['playOrder'][this.attributes['index']];
             let self = this;
             playlist.getNextAudioAsset(this.attributes['playlist'][curr_index], function (audioAsset) {
-                self.attributes['playlist'][curr_index].curr_index++;
                 console.log("audioAsset", JSON.stringify(audioAsset));
                 const offsetInMilliseconds = self.attributes['offsetInMilliseconds'];
                 // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
