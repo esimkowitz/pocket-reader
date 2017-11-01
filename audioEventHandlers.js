@@ -19,8 +19,8 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
          */
         console.log("PlaybackStarted Request");
         this.attributes['token'] = getToken.call(this);
-        this.attributes['index'] = this.attributes['nextPlaylistIndex'];
-        this.attributes['currArticleIndex'] = 'nextArticleIndex' in this.attributes ? this.attributes['nextArticleIndex'] : 0;
+        this.attributes['index'] = getIndex.call(this);
+        // this.attributes['currArticleIndex'] = 'nextArticleIndex' in this.attributes ? this.attributes['nextArticleIndex'] : 0;
 
         this.attributes['playbackFinished'] = false;
         console.log("this.attributes:", JSON.stringify(this.attributes));
@@ -82,7 +82,7 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         if (article.curr_index >= article.numSlices) {
             enqueueIndex += 1;
         }
-        console.log("enqueueIndex", enqueueIndex, "data.Count", this.attributes['playlist'].length);
+        console.log("enqueueIndex:", enqueueIndex, "playlist_length:", this.attributes['playlist'].length);
         if (enqueueIndex >= this.attributes['playlist'].length) {
             if (this.attributes['loop']) {
                 // Enqueueing the first item since looping is enabled.
@@ -94,8 +94,8 @@ let audioEventHandlers = Alexa.CreateStateHandler(constants.states.PLAY_MODE, {
         }
         // Setting attributes to indicate item is enqueued.
         this.attributes['enqueuedToken'] = `${this.attributes['playOrder'][enqueueIndex]}-${article.curr_index}`;
-        this.attributes['nextArticleIndex'] = article.curr_index;
-        this.attributes['nextPlaylistIndex'] = enqueueIndex;
+        // this.attributes['nextArticleIndex'] = article.curr_index;
+        // this.attributes['nextPlaylistIndex'] = enqueueIndex;
 
         let enqueueToken = this.attributes['enqueuedToken'];
         const playBehavior = 'ENQUEUE';

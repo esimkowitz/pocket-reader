@@ -29,3 +29,4 @@ _Read Pocket articles with Alexa_
 1. [ ] When more than one item is queued in the playlist, the numSlices attribute is sometimes copied from the first item
 1. [ ] When only one item is queued to the playlist, sometimes a second ghost item is added with no attributes other than a copy of the first item's `numSlices`
 1. [x] Figure out why the first audio asset is sometimes repeated at the start of an article's playback.
+1. [ ] Something is preventing the articles from playing past the second `audioAsset`
